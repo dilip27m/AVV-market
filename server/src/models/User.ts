@@ -10,7 +10,7 @@ export interface IUser extends Document {
   googleId: string;
   profileImage: string;
   phone: string;
-  hostel: string;
+  meetAddress: string;
   averageRating: number;
   totalRatings: number;
   totalItemsSold: number;
@@ -50,7 +50,7 @@ const userSchema = new Schema<IUser>(
       default: '',
       trim: true,
     },
-    hostel: {
+    meetAddress: {
       type: String,
       default: '',
       trim: true,

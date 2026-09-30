@@ -24,8 +24,8 @@ router.get('/my', authMiddleware, getMyListings);
 router.get('/:id', getListingById);
 
 // Protected
-router.post('/', authMiddleware, upload.array('images', 5), createListing);
-router.put('/:id', authMiddleware, upload.array('images', 5), updateListing);
+router.post('/', authMiddleware, upload.array('images', 4), createListing);
+router.put('/:id', authMiddleware, upload.array('images', 4), updateListing);
 router.patch('/:id/status', authMiddleware, updateListingStatus);
 router.delete('/:id', authMiddleware, deleteListing);
 

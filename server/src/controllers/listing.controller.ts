@@ -49,7 +49,7 @@ const uploadToCloudinary = (
 export const createListing = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = req.user!;
-    const { title, description, category, price, isNegotiable, condition, hostel } = req.body;
+    const { title, description, category, price, isNegotiable, condition, meetAddress } = req.body;
 
     // Upload images to Cloudinary
     const imageUrls: string[] = [];
@@ -71,7 +71,7 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
       condition: condition || 'Used - Good',
       sellerName: user.name,
       sellerPhone: user.phone || '',
-      hostel: hostel || user.hostel || '',
+      meetAddress: meetAddress || user.meetAddress || '',
       status: 'ACTIVE',
     });
 
@@ -178,7 +178,7 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
 export const getListingById = async (req: Request, res: Response): Promise<void> => {
   try {
     const listing = await Listing.findById(req.params.id)
-      .populate('sellerId', 'name email profileImage averageRating totalRatings hostel')
+      .populate('sellerId', 'name email profileImage averageRating totalRatings meetAddress')
       .lean();
 
     if (!listing) {
@@ -223,7 +223,7 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const { title, description, category, price, isNegotiable, condition, hostel, existingImages } = req.body;
+    const { title, description, category, price, isNegotiable, condition, meetAddress, existingImages } = req.body;
 
     // Parse existing images that the user wants to keep
     let keptImages: string[] = [];
@@ -242,7 +242,7 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    const allImages = [...keptImages, ...newImageUrls].slice(0, 5);
+    const allImages = [...keptImages, ...newImageUrls].slice(0, 4);
 
     // Update fields
     listing.title = title || listing.title;
@@ -254,7 +254,7 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
       ? (isNegotiable === 'true' || isNegotiable === true)
       : listing.isNegotiable;
     listing.condition = condition || listing.condition;
-    listing.hostel = hostel || listing.hostel;
+    listing.meetAddress = meetAddress || listing.meetAddress;
 
     await listing.save();
 

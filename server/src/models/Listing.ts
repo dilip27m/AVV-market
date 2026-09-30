@@ -39,7 +39,7 @@ export interface IListing extends Document {
   condition: ItemCondition;
   sellerName: string;
   sellerPhone: string;
-  hostel: string;
+  meetAddress: string;
   status: ListingStatus;
   expiresAt: Date;
   createdAt: Date;
@@ -72,8 +72,8 @@ const listingSchema = new Schema<IListing>(
     images: {
       type: [String],
       validate: {
-        validator: (val: string[]) => val.length <= 5,
-        message: 'Maximum 5 images allowed',
+        validator: (val: string[]) => val.length <= 4,
+        message: 'Maximum 4 images allowed',
       },
       default: [],
     },
@@ -113,7 +113,7 @@ const listingSchema = new Schema<IListing>(
       default: '',
       trim: true,
     },
-    hostel: {
+    meetAddress: {
       type: String,
       default: '',
       trim: true,

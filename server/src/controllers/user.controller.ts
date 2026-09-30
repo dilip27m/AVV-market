@@ -41,16 +41,16 @@ export const getUserProfile = async (req: Request, res: Response): Promise<void>
 // PUT /api/users/me
 //
 // Update the current user's profile.
-// Only allows updating: name, phone, hostel.
+// Only allows updating: name, phone, meetAddress.
 // ============================================================
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, phone, hostel } = req.body;
+    const { name, phone, meetAddress } = req.body;
 
     const updateData: Record<string, string> = {};
     if (name !== undefined) updateData.name = name;
     if (phone !== undefined) updateData.phone = phone;
-    if (hostel !== undefined) updateData.hostel = hostel;
+    if (meetAddress !== undefined) updateData.meetAddress = meetAddress;
 
     const user = await User.findByIdAndUpdate(
       req.userId,
