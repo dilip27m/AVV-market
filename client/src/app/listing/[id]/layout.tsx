@@ -2,17 +2,18 @@ import { Metadata } from 'next';
 import axios from 'axios';
 
 type Props = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
   children: React.ReactNode;
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
+    const resolvedParams = await params;
     // We hit the backend directly to fetch the listing data for SEO
     // Using process.env.NEXT_PUBLIC_API_URL or fallback for SSR
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
     
-    const { data } = await axios.get(`${apiUrl}/listings/${params.id}`);
+    const { data } = await axios.get(`${apiUrl}/listings/${resolvedParams.id}`);
     const listing = data.data;
 
     if (!listing) {
