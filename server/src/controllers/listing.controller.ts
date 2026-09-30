@@ -173,6 +173,18 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
 
     const [listings, total] = await Promise.all([
       Listing.find(filter)
+        .select({
+          title: 1,
+          price: 1,
+          condition: 1,
+          category: 1,
+          meetAddress: 1,
+          sellerName: 1,
+          sellerId: 1,
+          createdAt: 1,
+          images: { $slice: 1 }, // Only fetch the first image for the feed
+        })
+        .populate('sellerId', 'name averageRating') // Fix: Actually fetch the seller's rating
         .sort(sortOption)
         .skip(skip)
         .limit(limitNum)
