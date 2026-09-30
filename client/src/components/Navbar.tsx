@@ -24,7 +24,7 @@ export function Navbar() {
       <div className="flex h-14 items-center px-4 md:px-6 justify-between max-w-7xl mx-auto">
         <Link href="/" className="flex items-center gap-2">
           {/* A sleek minimal logo/icon placeholder */}
-          <div className="h-6 w-6 rounded bg-brand-primary flex items-center justify-center text-white text-xs font-bold">
+          <div className="h-6 w-6 rounded bg-brand-primary flex items-center justify-center text-[var(--text-on-brand)] text-xs font-bold">
             CM
           </div>
           <span className="font-semibold text-lg tracking-tight">CampusMart</span>
@@ -46,7 +46,7 @@ export function Navbar() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={user.profileImage} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-border-subtle" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-brand-primary text-white flex items-center justify-center font-bold text-sm">
+                  <div className="w-8 h-8 rounded-full bg-brand-primary text-[var(--text-on-brand)] flex items-center justify-center font-bold text-sm">
                     {user.name.charAt(0)}
                   </div>
                 )}

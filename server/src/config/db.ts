@@ -11,7 +11,7 @@ export const connectDB = async (): Promise<void> => {
     const conn = await mongoose.connect(env.MONGODB_URI, {
       // These are sensible defaults for Atlas
       maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
     });
 

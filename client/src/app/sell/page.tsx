@@ -3,31 +3,97 @@
 import { useState } from 'react';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { api } from '@/lib/api';
+import { LISTING_CATEGORIES } from '@/lib/constants';
+import toast from 'react-hot-toast';
+import imageCompression from 'browser-image-compression';
 
 export default function SellPage() {
+  const router = useRouter();
+  
+  // Form State
   const [images, setImages] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
-  
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [condition, setCondition] = useState('Used - Good');
+  const [price, setPrice] = useState('');
+  const [isNegotiable, setIsNegotiable] = useState(false);
+  const [sellerPhone, setSellerPhone] = useState('');
+  const [meetAddress, setMeetAddress] = useState('');
+
+  // UI State
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       const totalImages = images.length + newFiles.length;
       
       if (totalImages > 4) {
-        alert('You can only upload a maximum of 4 images.');
+        toast.error('You can only upload a maximum of 4 images.');
         return;
       }
       
-      const newPreviews = newFiles.map(file => URL.createObjectURL(file));
-      
-      setImages(prev => [...prev, ...newFiles]);
-      setPreviews(prev => [...prev, ...newPreviews]);
+      const options = {
+        maxSizeMB: 0.3, // ~300KB
+        maxWidthOrHeight: 1280,
+        useWebWorker: true
+      };
+
+      try {
+        const compressedFiles = await Promise.all(
+          newFiles.map(file => imageCompression(file, options))
+        );
+        
+        const newPreviews = compressedFiles.map(file => URL.createObjectURL(file));
+        setImages(prev => [...prev, ...compressedFiles]);
+        setPreviews(prev => [...prev, ...newPreviews]);
+      } catch (error) {
+        toast.error('Failed to compress image.');
+      }
     }
   };
 
   const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
     setPreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsSubmitting(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('description', description);
+      formData.append('category', category);
+      formData.append('condition', condition);
+      formData.append('price', price);
+      formData.append('isNegotiable', String(isNegotiable));
+      if (sellerPhone) formData.append('sellerPhone', sellerPhone);
+      if (meetAddress) formData.append('meetAddress', meetAddress);
+
+      // Append images
+      images.forEach(image => {
+        formData.append('images', image);
+      });
+
+      const { data } = await api.post('/listings', formData);
+
+      // Redirect to the newly created listing
+      router.push(`/listing/${data.data._id}`);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.response?.data?.message || 'Failed to create listing. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -40,7 +106,13 @@ export default function SellPage() {
           Fill out the details below to list your item on the campus marketplace.
         </p>
 
-        <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800 text-sm">
+            {error}
+          </div>
+        )}
+
+        <form className="space-y-6" onSubmit={handleSubmit}>
           
           {/* Images Section */}
           <div className="panel-card space-y-4">
@@ -90,6 +162,8 @@ export default function SellPage() {
                 type="text" 
                 placeholder="e.g., MacBook Stand, Engineering Drawing Kit" 
                 className="w-full"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 required
               />
             </div>
@@ -99,6 +173,8 @@ export default function SellPage() {
               <textarea 
                 placeholder="Describe the condition, reason for selling, or any other details..." 
                 className="w-full min-h-[120px] resize-y"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 required
               />
             </div>
@@ -106,28 +182,21 @@ export default function SellPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-text-primary">Category</label>
-                <select className="w-full" required>
-                  <option value="" disabled selected>Select category...</option>
-                  <option>Books</option>
-                  <option>Clothes</option>
-                  <option>Electronics</option>
-                  <option>Furniture</option>
-                  <option>Fitness</option>
-                  <option>Accessories</option>
-                  <option>Bags</option>
-                  <option>Hostel Essentials</option>
-                  <option>Cycles</option>
-                  <option>Others</option>
+                <select className="w-full" value={category} onChange={(e) => setCategory(e.target.value)} required>
+                  <option value="" disabled>Select category...</option>
+                  {LISTING_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-text-primary">Condition</label>
-                <select className="w-full" required>
-                  <option>New</option>
-                  <option>Like New</option>
-                  <option selected>Used - Good</option>
-                  <option>Used - Fair</option>
+                <select className="w-full" value={condition} onChange={(e) => setCondition(e.target.value)} required>
+                  <option value="New">New</option>
+                  <option value="Like New">Like New</option>
+                  <option value="Used - Good">Used - Good</option>
+                  <option value="Used - Fair">Used - Fair</option>
                 </select>
               </div>
             </div>
@@ -140,6 +209,8 @@ export default function SellPage() {
                   min="0"
                   placeholder="e.g., 500" 
                   className="w-full"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
                   required
                 />
               </div>
@@ -149,6 +220,8 @@ export default function SellPage() {
                   type="checkbox" 
                   id="negotiable"
                   className="w-5 h-5 rounded border-border-subtle text-brand-primary focus:ring-brand-primary bg-bg-base"
+                  checked={isNegotiable}
+                  onChange={(e) => setIsNegotiable(e.target.checked)}
                 />
                 <label htmlFor="negotiable" className="text-sm font-medium text-text-primary cursor-pointer">
                   Price is negotiable
@@ -164,12 +237,20 @@ export default function SellPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-text-primary">Phone / WhatsApp Number</label>
-                <input 
-                  type="tel" 
-                  placeholder="e.g., +91 9876543210" 
-                  className="w-full"
-                  required
-                />
+                <div className="flex">
+                  <span className="inline-flex items-center px-3 border-b border-border-subtle bg-transparent text-text-secondary text-sm border-r-0">
+                    +91
+                  </span>
+                  <input 
+                    type="tel" 
+                    placeholder="9490004752" 
+                    className="w-full flex-1 border-l-0 pl-2"
+                    value={sellerPhone}
+                    onChange={(e) => setSellerPhone(e.target.value)}
+                    maxLength={10}
+                    required
+                  />
+                </div>
                 <p className="text-xs text-text-muted">Buyers will use this to contact you.</p>
               </div>
 
@@ -179,6 +260,8 @@ export default function SellPage() {
                   type="text" 
                   placeholder="e.g., Main Library Entrance, Block A" 
                   className="w-full"
+                  value={meetAddress}
+                  onChange={(e) => setMeetAddress(e.target.value)}
                   required
                 />
                 <p className="text-xs text-text-muted">Where should the buyer meet you?</p>
@@ -188,11 +271,15 @@ export default function SellPage() {
 
           {/* Actions */}
           <div className="flex justify-end gap-4 pt-4 pb-12">
-            <Link href="/" className="btn-secondary px-6">
+            <Link href="/" className="btn-secondary px-6 flex items-center justify-center">
               Cancel
             </Link>
-            <button type="submit" className="btn-primary px-8">
-              Post Listing
+            <button 
+              type="submit" 
+              className={`btn-primary px-8 ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Posting...' : 'Post Listing'}
             </button>
           </div>
 

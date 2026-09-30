@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Footer } from "@/components/Footer";
 import { Providers } from "./providers";
+import { Toaster } from 'react-hot-toast';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,6 +24,19 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="h-full flex flex-col bg-bg-base text-text-primary">
         <Providers>
+          <Toaster 
+            position="bottom-center"
+            toastOptions={{
+              style: {
+                background: '#1a1a1a', // Charcoal black
+                color: '#ffffff',
+                border: '1px solid #333333',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                fontSize: '14px',
+              },
+            }}
+          />
           <div className="flex-1 flex flex-col">{children}</div>
           <Footer />
         </Providers>

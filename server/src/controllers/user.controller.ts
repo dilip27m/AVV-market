@@ -97,3 +97,48 @@ export const getUserListings = async (req: Request, res: Response): Promise<void
     res.status(500).json({ success: false, message: 'Failed to fetch listings' });
   }
 };
+
+// ============================================================
+// POST /api/users/:id/rate
+//
+// Rate a seller.
+// ============================================================
+export const rateUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { rating } = req.body;
+    const numRating = Number(rating);
+
+    if (isNaN(numRating) || numRating < 1 || numRating > 5) {
+      res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+      return;
+    }
+
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    // Simplistic rating: just update running average
+    const currentTotal = targetUser.totalRatings || 0;
+    const currentAvg = targetUser.averageRating || 0;
+
+    const newTotal = currentTotal + 1;
+    const newAvg = ((currentAvg * currentTotal) + numRating) / newTotal;
+
+    targetUser.totalRatings = newTotal;
+    targetUser.averageRating = Number(newAvg.toFixed(1)); // keep 1 decimal
+    await targetUser.save();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        averageRating: targetUser.averageRating,
+        totalRatings: targetUser.totalRatings,
+      },
+    });
+  } catch (error) {
+    console.error('Rate user error:', error);
+    res.status(500).json({ success: false, message: 'Failed to rate user' });
+  }
+};

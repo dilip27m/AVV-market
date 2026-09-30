@@ -13,13 +13,13 @@ const generateTokens = (userId: string, email: string) => {
   const accessToken = jwt.sign(
     { userId, email },
     env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN }
+    { expiresIn: env.JWT_EXPIRES_IN as any }
   );
 
   const refreshToken = jwt.sign(
     { userId, email },
     env.JWT_REFRESH_SECRET,
-    { expiresIn: env.JWT_REFRESH_EXPIRES_IN }
+    { expiresIn: env.JWT_REFRESH_EXPIRES_IN as any }
   );
 
   return { accessToken, refreshToken };

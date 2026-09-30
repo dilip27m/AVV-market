@@ -48,13 +48,14 @@ export const createMissingItem = async (req: Request, res: Response): Promise<vo
     const user = req.user!;
     const { title, description, category, lastSeenLocation, lastSeenDate } = req.body;
 
-    // Upload images
-    const imageUrls: string[] = [];
+    // Upload images concurrently
+    let imageUrls: string[] = [];
     if (req.files && Array.isArray(req.files)) {
-      for (const file of req.files) {
-        const result = await uploadToCloudinary(file.buffer, 'avv-market/missing');
-        imageUrls.push(result.secure_url);
-      }
+      const uploadPromises = req.files.map(file => 
+        uploadToCloudinary(file.buffer, 'avv-market/missing')
+      );
+      const results = await Promise.all(uploadPromises);
+      imageUrls = results.map(result => result.secure_url);
     }
 
     const missingItem = await MissingItem.create({
@@ -111,6 +112,7 @@ export const getMissingItems = async (req: Request, res: Response): Promise<void
 
     const [items, total] = await Promise.all([
       MissingItem.find(filter)
+        .populate('reporterId', 'name phone')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)

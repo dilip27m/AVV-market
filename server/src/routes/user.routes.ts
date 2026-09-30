@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { getUserProfile, updateProfile, getUserListings } from '../controllers/user.controller';
+import { getUserProfile, updateProfile, getUserListings, rateUser } from '../controllers/user.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
 
 // Protected
 router.put('/me', authMiddleware, updateProfile);
+router.post('/:id/rate', authMiddleware, rateUser);
 
 // Public
 router.get('/:id', getUserProfile);

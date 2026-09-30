@@ -1,7 +1,58 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
+import { api } from '@/lib/api';
+
+interface MissingItem {
+  _id: string;
+  title: string;
+  description: string;
+  lastSeenLocation: string;
+  images: string[];
+  status: string;
+  createdAt: string;
+  reporterId: {
+    name: string;
+    phone: string;
+  };
+}
 
 export default function LostAndFound() {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [items, setItems] = useState<MissingItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const getWhatsAppLink = (phone?: string, text?: string) => {
+    if (!phone) return '#';
+    const cleanPhone = phone.replace(/\D/g, '');
+    const finalPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
+    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(text || '')}`;
+  };
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchMissingItems = async () => {
+      try {
+        setIsLoading(true);
+        const { data } = await api.get('/missing-items');
+        setItems(data.data.items || []);
+      } catch (err: any) {
+        console.error(err);
+        setError('Failed to load missing items.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchMissingItems();
+  }, []);
+
+  const filteredItems = items.filter(item => 
+    (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (item.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
@@ -32,35 +83,64 @@ export default function LostAndFound() {
           </div>
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-11 pr-4 py-3 bg-bg-panel border border-border-subtle rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:bg-bg-base transition-all"
             placeholder="Search by item name, model, or description..."
           />
         </div>
 
-        {/* Missing Items List Placeholder */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Example Item Card */}
-          <div className="panel-card flex flex-col gap-4">
-            <div className="flex justify-between items-start">
-              <span className="px-2 py-1 text-xs font-semibold bg-red-100 text-red-700 rounded-md dark:bg-red-900/30 dark:text-red-400">MISSING</span>
-              <span className="text-xs text-text-muted">Reported 2 days ago</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-lg text-text-primary">Black Casio G-Shock</h3>
-              <p className="text-sm text-text-secondary line-clamp-2 mt-1">
-                Lost my watch near the library or cafeteria. It has a slight scratch on the screen.
-              </p>
-            </div>
-            <div className="mt-auto pt-4 border-t border-border-subtle">
-              <p className="text-sm">
-                <span className="text-text-muted">Last seen:</span> Main Library
-              </p>
-              <button className="btn-secondary w-full mt-4 text-sm">
-                Contact Reporter
-              </button>
-            </div>
+        {/* Items List */}
+        {isLoading ? (
+          <div className="py-12 flex justify-center">
+            <div className="w-8 h-8 rounded-full border-4 border-border-subtle border-t-brand-primary animate-spin"></div>
           </div>
-        </div>
+        ) : error ? (
+          <div className="text-center text-red-500 py-12">{error}</div>
+        ) : filteredItems.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredItems.map(item => (
+              <div key={item._id} className="panel-card flex flex-col gap-4">
+                {item.images && item.images.length > 0 && (
+                  <div className="w-full h-48 rounded-lg overflow-hidden -mt-2 -mx-2 mb-2 bg-bg-base">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={item.images[0]} alt={item.title} className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex justify-between items-start">
+                  <span className="px-2 py-1 text-xs font-semibold bg-red-100 text-red-700 rounded-md dark:bg-red-900/30 dark:text-red-400">MISSING</span>
+                  <span className="text-xs text-text-muted">{new Date(item.createdAt).toLocaleDateString()}</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg text-text-primary">{item.title}</h3>
+                  <p className="text-sm text-text-secondary line-clamp-3 mt-1">
+                    {item.description}
+                  </p>
+                </div>
+                <div className="mt-auto pt-4 border-t border-border-subtle">
+                  <p className="text-sm mb-3">
+                    <span className="text-text-muted">Last seen:</span> {item.lastSeenLocation}
+                  </p>
+                  <a 
+                    href={getWhatsAppLink(item.reporterId?.phone, `Hi ${item.reporterId?.name || ''}, I might have found the "${item.title}" you reported missing on CampusMart.`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary w-full text-sm flex justify-center items-center"
+                  >
+                    Contact Reporter
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="py-20 text-center border border-dashed border-border-subtle rounded-2xl bg-bg-panel">
+            <h3 className="text-lg font-semibold mb-1">No missing items</h3>
+            <p className="text-text-muted text-sm">
+              Either your campus is very safe, or nothing matches your search!
+            </p>
+          </div>
+        )}
 
       </main>
     </div>

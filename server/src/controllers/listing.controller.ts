@@ -51,13 +51,14 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
     const user = req.user!;
     const { title, description, category, price, isNegotiable, condition, meetAddress } = req.body;
 
-    // Upload images to Cloudinary
-    const imageUrls: string[] = [];
+    // Upload images to Cloudinary concurrently
+    let imageUrls: string[] = [];
     if (req.files && Array.isArray(req.files)) {
-      for (const file of req.files) {
-        const result = await uploadToCloudinary(file.buffer, 'avv-market/listings');
-        imageUrls.push(result.secure_url);
-      }
+      const uploadPromises = req.files.map(file => 
+        uploadToCloudinary(file.buffer, 'avv-market/listings')
+      );
+      const results = await Promise.all(uploadPromises);
+      imageUrls = results.map(result => result.secure_url);
     }
 
     const listing = await Listing.create({
@@ -112,6 +113,7 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
     // Build filter query
     const filter: Record<string, unknown> = {
       status: 'ACTIVE',
+      expiresAt: { $gt: new Date() },
     };
 
     if (category && category !== 'All') {
@@ -178,7 +180,7 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
 export const getListingById = async (req: Request, res: Response): Promise<void> => {
   try {
     const listing = await Listing.findById(req.params.id)
-      .populate('sellerId', 'name email profileImage averageRating totalRatings meetAddress')
+      .populate('sellerId', 'name email profileImage averageRating totalRatings meetAddress phone')
       .lean();
 
     if (!listing) {
@@ -233,13 +235,14 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
         : existingImages;
     }
 
-    // Upload new images
-    const newImageUrls: string[] = [];
+    // Upload new images concurrently
+    let newImageUrls: string[] = [];
     if (req.files && Array.isArray(req.files)) {
-      for (const file of req.files) {
-        const result = await uploadToCloudinary(file.buffer, 'avv-market/listings');
-        newImageUrls.push(result.secure_url);
-      }
+      const uploadPromises = req.files.map(file => 
+        uploadToCloudinary(file.buffer, 'avv-market/listings')
+      );
+      const results = await Promise.all(uploadPromises);
+      newImageUrls = results.map(result => result.secure_url);
     }
 
     const allImages = [...keptImages, ...newImageUrls].slice(0, 4);

@@ -12,6 +12,7 @@ import userRoutes from './routes/user.routes';
 import ratingRoutes from './routes/rating.routes';
 import reportRoutes from './routes/report.routes';
 import missingItemRoutes from './routes/missingItem.routes';
+import commentRoutes from './routes/comment.routes';
 
 // ============================================================
 // Express App Setup
@@ -64,6 +65,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/missing-items', missingItemRoutes);
+app.use('/api/comments', commentRoutes);
 
 // Apply creation rate limiter specifically to listing/missing-item creation
 app.post('/api/listings', createLimiter);

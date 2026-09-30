@@ -67,7 +67,7 @@ const missingItemSchema = new Schema<IMissingItem>(
     },
     lastSeenLocation: {
       type: String,
-      required: [true, 'Last seen location is required'],
+      default: '',
       trim: true,
     },
     lastSeenDate: {

@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  /* ChatGPT-inspired minimalist color palette */
-  --color-brand-primary: #10a37f;
-  --color-brand-hover: #1a7f64;
+  /* Strict Grayscale Monochrome Palette */
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-hover: var(--brand-hover);
 
   --color-bg-base: var(--bg-base);
   --color-bg-panel: var(--bg-panel);
@@ -20,29 +20,37 @@
 
 :root {
   /* Light Mode Variables */
+  --brand-primary: #111111;
+  --brand-hover: #333333;
+  --text-on-brand: #ffffff;
+
   --bg-base: #ffffff;
   --bg-panel: #f9f9f9;
-  --bg-hover: #ececec;
+  --bg-hover: #eaeaea;
   
-  --text-primary: #0d0d0d;
-  --text-secondary: #4d4d4d;
-  --text-muted: #8e8ea0;
+  --text-primary: #111111;
+  --text-secondary: #555555;
+  --text-muted: #888888;
   
-  --border-subtle: #e5e5e5;
+  --border-subtle: #e0e0e0;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Dark Mode Variables (ChatGPT style) */
-    --bg-base: #212121;
-    --bg-panel: #2f2f2f;
-    --bg-hover: #3b3b3b;
+    /* Dark Mode Variables */
+    --brand-primary: #ffffff;
+    --brand-hover: #cccccc;
+    --text-on-brand: #111111;
+
+    --bg-base: #121212; /* Deep Charcoal */
+    --bg-panel: #161616; /* Slightly lighter Charcoal for boxes */
+    --bg-hover: #1c1c1c;
     
-    --text-primary: #ececec;
-    --text-secondary: #b4b4b4;
-    --text-muted: #8e8ea0;
+    --text-primary: #f0f0f0;
+    --text-secondary: #a0a0a0;
+    --text-muted: #666666;
     
-    --border-subtle: #4d4d4d;
+    --border-subtle: #262626;
   }
 }
 
@@ -53,21 +61,30 @@
   
   /* Sleek, minimal inputs */
   input, textarea, select {
-    @apply bg-transparent border border-border-subtle rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-brand-primary/50 transition-shadow bg-bg-base text-text-primary;
+    @apply bg-bg-panel border border-border-subtle px-4 py-3 focus:outline-none focus:border-brand-primary transition-colors text-text-primary rounded-2xl shadow-sm;
   }
   
   /* Minimalist button styles */
   .btn-primary {
-    @apply bg-brand-primary text-white font-medium px-4 py-2 rounded-lg hover:bg-brand-hover transition-colors flex items-center justify-center;
+    @apply bg-brand-primary font-medium px-5 py-3 hover:bg-brand-hover transition-colors flex items-center justify-center rounded-full shadow-md;
+    color: var(--text-on-brand);
   }
   
   .btn-secondary {
-    @apply bg-bg-panel border border-border-subtle text-text-primary font-medium px-4 py-2 rounded-lg hover:bg-bg-hover transition-colors flex items-center justify-center;
+    @apply bg-bg-panel border border-border-subtle text-text-primary font-medium px-5 py-3 hover:bg-bg-hover transition-colors flex items-center justify-center rounded-full shadow-sm;
   }
 
   /* Chat-like cards/panels */
   .panel-card {
-    @apply bg-bg-panel rounded-xl p-6 border border-border-subtle shadow-sm;
+    @apply bg-bg-panel p-6 border border-border-subtle rounded-3xl shadow-lg;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  @layer base {
+    .panel-card {
+      @apply bg-[#f4f4f4] p-6 border border-border-subtle rounded-3xl shadow-md;
+    }
   }
 }
 

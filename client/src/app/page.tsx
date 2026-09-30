@@ -1,64 +1,70 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { ListingCard } from '@/components/ListingCard';
 import { LISTING_CATEGORIES } from '@/lib/constants';
+import { api } from '@/lib/api';
+
+interface Listing {
+  _id: string;
+  title: string;
+  price: number;
+  images: string[];
+  condition: string;
+  category: string;
+  meetAddress: string;
+  sellerId?: {
+    name: string;
+    averageRating: number;
+  };
+  sellerName: string;
+}
 
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [sortOption, setSortOption] = useState<string>('newest');
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Mock data for initial UI viewing
-  const mockListings = [
-    {
-      _id: '1',
-      title: 'Sony WH-1000XM4 Noise Cancelling Headphones',
-      price: 15000,
-      images: ['https://via.placeholder.com/400x300?text=Headphones'],
-      condition: 'Used - Good',
-      category: 'Electronics',
-      meetAddress: 'Library Café, Main Campus',
-      seller: { name: 'Rahul K.', rating: 4.8 }
-    },
-    {
-      _id: '2',
-      title: 'Engineering Mathematics Vol 1',
-      price: 350,
-      images: ['https://via.placeholder.com/400x300?text=Book'],
-      condition: 'Like New',
-      category: 'Books',
-      meetAddress: 'Block A, Room 102',
-      seller: { name: 'Amit S.', rating: 4.2 }
-    },
-    {
-      _id: '3',
-      title: 'Hercules Roadeo Cycle',
-      price: 4500,
-      images: ['https://via.placeholder.com/400x300?text=Cycle'],
-      condition: 'Used - Fair',
-      category: 'Cycles',
-      meetAddress: 'Main Gate Parking',
-      seller: { name: 'Priya M.', rating: 5.0 }
-    },
-    {
-      _id: '4',
-      title: 'Study Table Lamp',
-      price: 250,
-      images: ['https://via.placeholder.com/400x300?text=Lamp'],
-      condition: 'New',
-      category: 'Hostel Essentials',
-      meetAddress: 'Block C Reception',
-      seller: { name: 'Neha V.', rating: 4.5 }
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const fetchListings = async () => {
+      try {
+        setIsLoading(true);
+        const params = new URLSearchParams();
+        if (activeCategory !== 'All') params.append('category', activeCategory);
+        if (debouncedSearch) params.append('search', debouncedSearch);
+        params.append('sort', sortOption);
+        
+        const { data } = await api.get(`/listings?${params.toString()}`);
+        setListings(data.data.listings || []);
+      } catch (err: any) {
+        setError('Failed to load listings.');
+        console.error(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchListings();
+  }, [activeCategory, debouncedSearch, sortOption]);
+
+  const formattedListings = listings.map(item => ({
+    ...item,
+    seller: {
+      name: item.sellerId?.name || item.sellerName,
+      rating: item.sellerId?.averageRating || 0,
     }
-  ];
-
-  // Simple filter for the mock data
-  const filteredListings = mockListings.filter(item => {
-    const matchesCategory = activeCategory === 'All' || item.category === activeCategory;
-    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  }));
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -91,14 +97,15 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Categories (Scrollable Pills) */}
-        <div className="mb-8 overflow-x-auto pb-4 hide-scrollbar">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          {/* Categories (Scrollable Pills) */}
+          <div className="overflow-x-auto pb-2 hide-scrollbar w-full sm:w-auto">
           <div className="flex gap-2 min-w-max">
             <button
               onClick={() => setActiveCategory('All')}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border ${
                 activeCategory === 'All' 
-                  ? 'bg-brand-primary text-white border-brand-primary' 
+                  ? 'bg-brand-primary text-[var(--text-on-brand)] border-brand-primary' 
                   : 'bg-bg-panel text-text-secondary border-border-subtle hover:bg-bg-hover'
               }`}
             >
@@ -110,13 +117,28 @@ export default function Home() {
                 onClick={() => setActiveCategory(cat)}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border ${
                   activeCategory === cat 
-                    ? 'bg-brand-primary text-white border-brand-primary' 
+                    ? 'bg-brand-primary text-[var(--text-on-brand)] border-brand-primary' 
                     : 'bg-bg-panel text-text-secondary border-border-subtle hover:bg-bg-hover'
                 }`}
               >
                 {cat}
               </button>
             ))}
+          </div>
+          </div>
+          
+          {/* Sort Dropdown */}
+          <div className="flex-shrink-0">
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+              className="bg-bg-panel border border-border-subtle text-text-primary text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-brand-primary/50 cursor-pointer transition-all"
+            >
+              <option value="newest">Newest First</option>
+              <option value="price_low">Price: Low to High</option>
+              <option value="price_high">Price: High to Low</option>
+              <option value="oldest">Oldest First</option>
+            </select>
           </div>
         </div>
 
@@ -125,12 +147,21 @@ export default function Home() {
           <h2 className="text-xl font-bold">
             {activeCategory === 'All' ? 'Recently Listed' : `${activeCategory}`}
           </h2>
-          <span className="text-sm text-text-muted">{filteredListings.length} results</span>
+          <span className="text-sm text-text-muted">{formattedListings.length} results</span>
         </div>
 
-        {filteredListings.length > 0 ? (
+        {isLoading ? (
+          <div className="py-20 text-center">
+            <div className="w-8 h-8 rounded-full border-4 border-border-subtle border-t-brand-primary animate-spin mx-auto mb-4"></div>
+            <p className="text-text-muted">Loading items...</p>
+          </div>
+        ) : error ? (
+          <div className="py-20 text-center text-red-500">
+            <p>{error}</p>
+          </div>
+        ) : formattedListings.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {filteredListings.map((listing) => (
+            {formattedListings.map((listing) => (
               <ListingCard key={listing._id} listing={listing} />
             ))}
           </div>
