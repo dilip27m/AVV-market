@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import useSWR from 'swr';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -9,52 +10,27 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
 
+const fetcher = (url: string) => api.get(url).then(res => res.data.data);
+
 export default function ListingDetails() {
   const params = useParams();
   const id = params.id as string;
 
   const [activeImage, setActiveImage] = useState(0);
-  const [listing, setListing] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-  
   const { user } = useAuth();
-  const [comments, setComments] = useState<any[]>([]);
+  
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
 
-  useEffect(() => {
-    if (!id) return;
+  // SWR Hooks
+  const { data: listing, error: listingError, isLoading: isListingLoading, mutate: mutateListing } = useSWR(id ? `/listings/${id}` : null, fetcher);
+  const { data: comments = [], mutate: mutateComments } = useSWR(id ? `/comments/${id}` : null, fetcher);
+  const { data: wishlistData, mutate: mutateWishlist } = useSWR(user ? '/users/me/wishlist' : null, fetcher);
 
-    const fetchListing = async () => {
-      try {
-        setIsLoading(true);
-        const [listingRes, commentsRes] = await Promise.all([
-          api.get(`/listings/${id}`),
-          api.get(`/comments/${id}`)
-        ]);
-        setListing(listingRes.data.data);
-        setComments(commentsRes.data.data || []);
-        
-        if (user) {
-          try {
-            const wishlistRes = await api.get('/users/me/wishlist');
-            const wishlistIds = wishlistRes.data.data.map((item: any) => item._id || item);
-            setIsSaved(wishlistIds.includes(id));
-          } catch (e) {
-            // Ignore wishlist fetch error quietly
-          }
-        }
-      } catch (err) {
-        console.error(err);
-        setError('Listing not found or failed to load.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchListing();
-  }, [id]);
+  // Derived state
+  const isSaved = wishlistData?.map((item: any) => item._id || item).includes(id) || false;
+  const isLoading = isListingLoading;
+  const error = listingError ? 'Listing not found or failed to load.' : '';
 
   if (isLoading) {
     return (
@@ -80,15 +56,12 @@ export default function ListingDetails() {
     );
   }
 
-  // Format posted At (simple relative time placeholder since createdAt is a Date string)
   const postedAt = new Date(listing.createdAt).toLocaleDateString();
 
   const generateWhatsAppLink = () => {
     let sellerPhone = listing.sellerId?.phone || listing.sellerPhone;
     if (sellerPhone) {
-      // Strip all non-digits
       sellerPhone = sellerPhone.replace(/\D/g, '');
-      // If it's a 10 digit Indian number, prefix with 91
       if (sellerPhone.length === 10) {
         sellerPhone = `91${sellerPhone}`;
       }
@@ -105,7 +78,7 @@ export default function ListingDetails() {
     try {
       setIsSubmittingComment(true);
       const { data } = await api.post(`/comments/${id}`, { text: newComment });
-      setComments((prev) => [...prev, data.data]);
+      mutateComments([...comments, data.data], false); // Optimistic UI
       setNewComment('');
     } catch (err) {
       console.error('Failed to add comment', err);
@@ -117,15 +90,21 @@ export default function ListingDetails() {
 
   const handleDeleteComment = async (commentId: string) => {
     if (!confirm('Are you sure you want to delete this comment?')) return;
+    
+    // Optimistic UI
+    mutateComments(comments.filter((c: any) => c._id !== commentId), false);
+    
     try {
       await api.delete(`/comments/${commentId}`);
-      setComments((prev) => prev.filter(c => c._id !== commentId));
       toast.success('Comment deleted');
+      mutateComments(); // Revalidate
     } catch (err) {
       console.error('Failed to delete comment', err);
       toast.error('Failed to delete comment.');
+      mutateComments(); // Revert
     }
   };
+
   const handleRateSeller = async (rating: number) => {
     if (!user) {
       toast.error('You must be logged in to rate sellers.');
@@ -134,14 +113,16 @@ export default function ListingDetails() {
     try {
       const res = await api.post(`/users/${listing.sellerId._id}/rate`, { rating });
       toast.success('Thanks for rating this seller!');
-      setListing((prev: any) => ({
-        ...prev,
+      
+      // Update listing state optimistically
+      mutateListing({
+        ...listing,
         sellerId: {
-          ...prev.sellerId,
+          ...listing.sellerId,
           averageRating: res.data.data.averageRating,
           totalRatings: res.data.data.totalRatings,
         }
-      }));
+      }, false);
     } catch (err) {
       toast.error('Failed to rate seller.');
     }
@@ -155,7 +136,6 @@ export default function ListingDetails() {
     const reason = window.prompt('Reason for reporting? (e.g. SPAM, WRONG_INFO, ALREADY_SOLD, INAPPROPRIATE, OTHER)');
     if (!reason) return;
     
-    // Convert human readable to ENUM if they didn't type it exact (fallback to OTHER)
     const validReasons = ['SPAM', 'WRONG_INFO', 'ALREADY_SOLD', 'INAPPROPRIATE', 'OTHER'];
     const formattedReason = validReasons.includes(reason.toUpperCase()) ? reason.toUpperCase() : 'OTHER';
 
@@ -181,8 +161,13 @@ export default function ListingDetails() {
       return;
     }
     
+    const wasSaved = isSaved;
+    
     // Optimistic UI update
-    setIsSaved(!isSaved);
+    mutateWishlist((prev: any[] = []) => {
+      if (wasSaved) return prev.filter((item: any) => (item._id || item) !== id);
+      return [...prev, id];
+    }, false);
     
     try {
       const res = await api.post(`/users/wishlist/${id}`);
@@ -191,9 +176,9 @@ export default function ListingDetails() {
       } else {
         toast.success('Removed from Wishlist.');
       }
+      mutateWishlist(); // Revalidate
     } catch (error) {
-      // Revert on failure
-      setIsSaved(!isSaved);
+      mutateWishlist(); // Revert
       toast.error('Failed to update wishlist.');
     }
   };
@@ -210,6 +195,7 @@ export default function ListingDetails() {
       toast.success('Link copied to clipboard!');
     }
   };
+
   return (
     <div className="flex flex-col min-h-screen bg-bg-base">
       <Navbar />
@@ -231,15 +217,17 @@ export default function ListingDetails() {
           {/* Image Gallery */}
           <div className="space-y-4">
             <div className="relative aspect-video w-full bg-bg-panel rounded-xl overflow-hidden border border-border-subtle flex items-center justify-center">
-              <Image 
-                src={listing.images[activeImage]} 
-                alt={listing.title}
-                fill
-                sizes="(max-width: 768px) 100vw, 800px"
-                className="object-cover"
-              />
+              {listing.images && listing.images.length > 0 && (
+                <Image 
+                  src={listing.images[activeImage]} 
+                  alt={listing.title}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 800px"
+                  className="object-cover"
+                />
+              )}
             </div>
-            {listing.images.length > 1 && (
+            {listing.images && listing.images.length > 1 && (
               <div className="flex gap-4 overflow-x-auto pb-2">
                 {listing.images.map((src: string, idx: number) => (
                   <button 
@@ -291,7 +279,7 @@ export default function ListingDetails() {
                   No questions yet. Be the first to ask!
                 </p>
               ) : (
-                comments.map((comment) => (
+                comments.map((comment: any) => (
                   <div key={comment._id} className="flex gap-3">
                     <div className="w-8 h-8 rounded-full bg-brand-primary text-[var(--text-on-brand)] flex items-center justify-center font-bold text-sm flex-shrink-0">
                       {comment.userName.charAt(0)}
@@ -376,7 +364,7 @@ export default function ListingDetails() {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-text-muted text-right">Posted {listing.postedAt}</p>
+              <p className="text-xs text-text-muted text-right">Posted {postedAt}</p>
             </div>
 
             {/* Seller & Action Card */}

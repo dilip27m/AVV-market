@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import useSWR from 'swr';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+
+const fetcher = (url: string) => api.get(url).then(res => res.data.data.items || []);
 
 interface MissingItem {
   _id: string;
@@ -21,8 +24,7 @@ interface MissingItem {
 
 export default function LostAndFound() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [items, setItems] = useState<MissingItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: items = [], error, isLoading } = useSWR<MissingItem[]>('/missing-items', fetcher);
 
   const getWhatsAppLink = (phone?: string, text?: string) => {
     if (!phone) return '#';
@@ -30,23 +32,6 @@ export default function LostAndFound() {
     const finalPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
     return `https://wa.me/${finalPhone}?text=${encodeURIComponent(text || '')}`;
   };
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const fetchMissingItems = async () => {
-      try {
-        setIsLoading(true);
-        const { data } = await api.get('/missing-items');
-        setItems(data.data.items || []);
-      } catch (err: any) {
-        console.error(err);
-        setError('Failed to load missing items.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchMissingItems();
-  }, []);
 
   const filteredItems = items.filter(item => 
     (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
