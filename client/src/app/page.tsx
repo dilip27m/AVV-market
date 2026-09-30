@@ -1,6 +1,7 @@
 import { Navbar } from '@/components/Navbar';
 import { ListingCard } from '@/components/ListingCard';
 import { HomeFilters } from '@/components/HomeFilters';
+import { LoadMoreListings } from '@/components/LoadMoreListings';
 
 interface Listing {
   _id: string;
@@ -86,11 +87,17 @@ export default async function Home({
             <p>{error}</p>
           </div>
         ) : formattedListings.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {formattedListings.map((listing) => (
-              <ListingCard key={listing._id} listing={listing} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {formattedListings.map((listing) => (
+                <ListingCard key={listing._id} listing={listing} />
+              ))}
+            </div>
+            <LoadMoreListings 
+              initialListings={formattedListings} 
+              searchParams={{ category, search, sort }} 
+            />
+          </>
         ) : (
           <div className="py-20 text-center border border-dashed border-border-subtle rounded-2xl bg-bg-panel">
             <div className="text-4xl mb-4">🔍</div>

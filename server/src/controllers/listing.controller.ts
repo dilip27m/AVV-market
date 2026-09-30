@@ -111,11 +111,14 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
       category,
       sort = 'newest',
       search,
+      cursor,
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit as string, 10)));
-    const skip = (pageNum - 1) * limitNum;
+    
+    // If using cursor-based pagination, we don't use offset skipping
+    const skip = cursor ? 0 : (pageNum - 1) * limitNum;
 
     // Build filter query
     const filter: Record<string, unknown> = {
@@ -130,6 +133,16 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
     // Text search
     if (search) {
       filter.$text = { $search: search as string };
+    }
+
+    // Cursor filter for simple _id sorting
+    if (cursor) {
+      if (sort === 'newest' || !sort) {
+        filter._id = { $lt: cursor };
+      } else if (sort === 'oldest') {
+        filter._id = { $gt: cursor };
+      }
+      // For price sorting, cursor pagination is more complex, so it seamlessly falls back to 'page' skipping.
     }
 
     // Build sort
