@@ -21,6 +21,7 @@ export default function ListingDetails() {
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -34,6 +35,16 @@ export default function ListingDetails() {
         ]);
         setListing(listingRes.data.data);
         setComments(commentsRes.data.data || []);
+        
+        if (user) {
+          try {
+            const wishlistRes = await api.get('/users/me/wishlist');
+            const wishlistIds = wishlistRes.data.data.map((item: any) => item._id || item);
+            setIsSaved(wishlistIds.includes(id));
+          } catch (e) {
+            // Ignore wishlist fetch error quietly
+          }
+        }
       } catch (err) {
         console.error(err);
         setError('Listing not found or failed to load.');
@@ -160,6 +171,29 @@ export default function ListingDetails() {
       } else {
         toast.error('Failed to report listing.');
       }
+    }
+  };
+
+  const handleToggleSave = async () => {
+    if (!user) {
+      toast.error('You must be logged in to save listings.');
+      return;
+    }
+    
+    // Optimistic UI update
+    setIsSaved(!isSaved);
+    
+    try {
+      const res = await api.post(`/users/wishlist/${id}`);
+      if (res.data.data.added) {
+        toast.success('Added to Wishlist!');
+      } else {
+        toast.success('Removed from Wishlist.');
+      }
+    } catch (error) {
+      // Revert on failure
+      setIsSaved(!isSaved);
+      toast.error('Failed to update wishlist.');
     }
   };
 
@@ -405,6 +439,22 @@ export default function ListingDetails() {
                   </svg>
                   Share Listing
                 </button>
+                
+                {user && user._id !== (listing.sellerId?._id || listing.sellerId) && (
+                  <button 
+                    onClick={handleToggleSave}
+                    className={`w-full flex items-center justify-center gap-2 font-semibold py-3 px-4 rounded-xl transition-colors border shadow-sm ${
+                      isSaved 
+                        ? 'bg-red-50 text-red-500 border-red-200 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50' 
+                        : 'bg-bg-base hover:bg-bg-hover text-text-primary border-border-subtle'
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill={isSaved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={isSaved ? 0 : 2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    {isSaved ? 'Saved to Wishlist' : 'Save for Later'}
+                  </button>
+                )}
               </div>
             </div>
 

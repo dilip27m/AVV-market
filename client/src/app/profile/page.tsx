@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 export default function Profile() {
   const { user } = useAuth();
   const [myListings, setMyListings] = useState<any[]>([]);
+  const [wishlist, setWishlist] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -18,8 +19,12 @@ export default function Profile() {
     const fetchMyListings = async () => {
       try {
         setIsLoading(true);
-        const { data } = await api.get(`/listings?sellerId=${user._id}`);
-        setMyListings(data.data.listings || []);
+        const [listingsRes, wishlistRes] = await Promise.all([
+          api.get(`/listings?sellerId=${user._id}`),
+          api.get('/users/me/wishlist')
+        ]);
+        setMyListings(listingsRes.data.data.listings || []);
+        setWishlist(wishlistRes.data.data || []);
       } catch (error) {
         console.error('Failed to fetch user listings', error);
       } finally {
@@ -40,6 +45,16 @@ export default function Profile() {
     }
   };
 
+  const handleRemoveFromWishlist = async (id: string) => {
+    try {
+      await api.post(`/users/wishlist/${id}`);
+      setWishlist(prev => prev.filter(l => l._id !== id));
+      toast.success('Removed from wishlist');
+    } catch (error) {
+      toast.error('Failed to update wishlist');
+    }
+  };
+
   const handleMarkSold = async (id: string) => {
     try {
       await api.patch(`/listings/${id}/status`, { status: 'SOLD' });
@@ -47,6 +62,16 @@ export default function Profile() {
       toast.success('Listing marked as sold!');
     } catch (error) {
       toast.error('Failed to update listing status.');
+    }
+  };
+
+  const handleRenew = async (id: string) => {
+    try {
+      const { data } = await api.patch(`/listings/${id}/renew`);
+      setMyListings(prev => prev.map(l => l._id === id ? data.data : l));
+      toast.success('Listing renewed for 30 days!');
+    } catch (error) {
+      toast.error('Failed to renew listing.');
     }
   };
 
@@ -62,7 +87,8 @@ export default function Profile() {
     );
   }
 
-  const activeListings = myListings.filter(l => l.status === 'ACTIVE');
+  const activeListings = myListings.filter(l => l.status === 'ACTIVE' && new Date(l.expiresAt) > new Date());
+  const expiredListings = myListings.filter(l => l.status === 'EXPIRED' || (l.status === 'ACTIVE' && new Date(l.expiresAt) <= new Date()));
   const soldListings = myListings.filter(l => l.status === 'SOLD');
 
   return (
@@ -134,6 +160,36 @@ export default function Profile() {
               )}
             </div>
 
+            {expiredListings.length > 0 && (
+              <div className="panel-card space-y-4 opacity-80">
+                <h3 className="text-lg font-semibold mb-2">Expired Listings ({expiredListings.length})</h3>
+                <div className="space-y-4">
+                  {expiredListings.map(listing => (
+                    <div key={listing._id} className="flex gap-4 py-4 border-b border-border-subtle items-center last:border-0">
+                      <div className="w-16 h-16 rounded-md bg-bg-panel overflow-hidden flex-shrink-0 grayscale">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {listing.images?.[0] && <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-semibold text-text-muted truncate block">
+                          {listing.title} (Expired)
+                        </span>
+                        <p className="text-sm font-medium text-text-muted mt-1">₹{listing.price.toLocaleString('en-IN')}</p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                        <button onClick={() => handleRenew(listing._id)} className="px-3 py-1.5 text-xs font-medium bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 rounded-lg transition-colors border border-brand-primary/20">
+                          Renew
+                        </button>
+                        <button onClick={() => handleDelete(listing._id)} className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {soldListings.length > 0 && (
               <div className="panel-card space-y-4 opacity-70">
                 <h3 className="text-lg font-semibold mb-2">Sold Items ({soldListings.length})</h3>
@@ -142,6 +198,33 @@ export default function Profile() {
                     <div key={listing._id} className="flex justify-between py-3 border-b border-border-subtle items-center last:border-0">
                       <span className="text-sm line-through truncate mr-4">{listing.title}</span>
                       <button onClick={() => handleDelete(listing._id)} className="text-xs text-red-500 hover:underline shrink-0">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {wishlist.length > 0 && (
+              <div className="panel-card space-y-4">
+                <h3 className="text-lg font-semibold mb-2">My Wishlist</h3>
+                <div className="space-y-4">
+                  {wishlist.map(listing => (
+                    <div key={listing._id} className="flex gap-4 py-4 border-b border-border-subtle items-center last:border-0">
+                      <div className="w-16 h-16 rounded-md bg-bg-panel overflow-hidden flex-shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {listing.images?.[0] && <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <Link href={`/listing/${listing._id}`} className="font-semibold text-text-primary hover:text-brand-primary truncate block">
+                          {listing.title}
+                        </Link>
+                        <p className="text-sm font-medium text-brand-primary mt-1">₹{listing.price?.toLocaleString('en-IN')}</p>
+                      </div>
+                      <div className="flex shrink-0">
+                        <button onClick={() => handleRemoveFromWishlist(listing._id)} className="px-3 py-1.5 text-xs font-medium bg-bg-panel text-text-secondary hover:text-red-500 rounded-lg transition-colors border border-border-subtle hover:border-red-200">
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

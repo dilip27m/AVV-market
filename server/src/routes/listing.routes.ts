@@ -7,6 +7,8 @@ import {
   updateListingStatus,
   deleteListing,
   getMyListings,
+  renewListing,
+  adminDeleteListing,
 } from '../controllers/listing.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
@@ -27,6 +29,8 @@ router.get('/:id', getListingById);
 router.post('/', authMiddleware, upload.array('images', 4), createListing);
 router.put('/:id', authMiddleware, upload.array('images', 4), updateListing);
 router.patch('/:id/status', authMiddleware, updateListingStatus);
+router.patch('/:id/renew', authMiddleware, renewListing);
 router.delete('/:id', authMiddleware, deleteListing);
+router.delete('/:id/admin', authMiddleware, adminDeleteListing);
 
 export default router;

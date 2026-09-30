@@ -142,3 +142,66 @@ export const rateUser = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ success: false, message: 'Failed to rate user' });
   }
 };
+
+// ============================================================
+// POST /api/users/wishlist/:listingId
+//
+// Toggle a listing in the user's wishlist
+// ============================================================
+export const toggleWishlist = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const listingId = req.params.listingId;
+    const user = await User.findById(req.userId);
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    const index = user.wishlist.findIndex(id => id.toString() === listingId);
+    let added = false;
+    
+    if (index === -1) {
+      // Add to wishlist
+      user.wishlist.push(listingId as any);
+      added = true;
+    } else {
+      // Remove from wishlist
+      user.wishlist.splice(index, 1);
+    }
+    
+    await user.save();
+    
+    res.status(200).json({
+      success: true,
+      data: { wishlist: user.wishlist, added },
+      message: added ? 'Added to wishlist' : 'Removed from wishlist'
+    });
+  } catch (error) {
+    console.error('Toggle wishlist error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update wishlist' });
+  }
+};
+
+// ============================================================
+// GET /api/users/me/wishlist
+//
+// Get the user's wishlisted listings
+// ============================================================
+export const getWishlist = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = await User.findById(req.userId).populate('wishlist');
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    // Filter out active wishlist items only (optional, depends on if we want to show expired/sold)
+    res.status(200).json({
+      success: true,
+      data: user.wishlist,
+    });
+  } catch (error) {
+    console.error('Get wishlist error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch wishlist' });
+  }
+};

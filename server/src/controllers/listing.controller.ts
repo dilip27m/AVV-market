@@ -388,3 +388,67 @@ export const getMyListings = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ success: false, message: 'Failed to fetch listings' });
   }
 };
+
+// ============================================================
+// PATCH /api/listings/:id/renew
+//
+// Renew a listing for another 30 days.
+// ============================================================
+export const renewListing = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const listing = await Listing.findById(req.params.id);
+
+    if (!listing) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+
+    if (listing.sellerId.toString() !== req.userId) {
+      res.status(403).json({ success: false, message: 'Not authorized' });
+      return;
+    }
+
+    // Extend expiresAt by 30 days from now
+    listing.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    // If it was somehow EXPIRED (or we want to ensure it's active)
+    listing.status = 'ACTIVE';
+    
+    await listing.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Listing renewed for 30 days',
+      data: listing
+    });
+  } catch (error) {
+    console.error('Renew listing error:', error);
+    res.status(500).json({ success: false, message: 'Failed to renew listing' });
+  }
+};
+// ============================================================
+// DELETE /api/listings/:id/admin
+//
+// Admin delete a listing without checking sellerId
+// ============================================================
+export const adminDeleteListing = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const listing = await Listing.findById(req.params.id);
+
+    if (!listing) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+
+    // Force delete or mark as deleted
+    listing.status = 'DELETED';
+    await listing.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Listing forcefully deleted by admin',
+    });
+  } catch (error) {
+    console.error('Admin delete listing error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete listing' });
+  }
+};

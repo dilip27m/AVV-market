@@ -14,6 +14,7 @@ export interface IUser extends Document {
   averageRating: number;
   totalRatings: number;
   totalItemsSold: number;
+  wishlist: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,6 +69,10 @@ const userSchema = new Schema<IUser>(
     totalItemsSold: {
       type: Number,
       default: 0,
+    },
+    wishlist: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'Listing' }],
+      default: [],
     },
   },
   {
