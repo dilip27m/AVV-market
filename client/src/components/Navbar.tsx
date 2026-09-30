@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useRef, useEffect } from 'react';
 
@@ -43,8 +44,9 @@ export function Navbar() {
                 className="flex items-center gap-2 hover:opacity-80 transition-opacity"
               >
                 {user.profileImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={user.profileImage} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-border-subtle" />
+                  <div className="relative w-8 h-8 rounded-full overflow-hidden border border-border-subtle">
+                    <Image src={user.profileImage} alt="Profile" fill sizes="32px" className="object-cover" />
+                  </div>
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-brand-primary text-[var(--text-on-brand)] flex items-center justify-center font-bold text-sm">
                     {user.name.charAt(0)}

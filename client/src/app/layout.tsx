@@ -26,6 +26,19 @@ export const metadata: Metadata = {
     title: "CampusMart | College Marketplace",
     description: "A private marketplace for your campus. Buy, sell, and report lost items.",
   },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "CampusMart",
+  },
+};
+
+export const viewport = {
+  themeColor: "#4F46E5",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
