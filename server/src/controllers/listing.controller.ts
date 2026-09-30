@@ -85,6 +85,9 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
       data: listing,
       message: 'Listing created successfully',
     });
+
+    // Invalidate feed cache so the new item shows up instantly
+    cache.flushAll();
   } catch (error) {
     console.error('Create listing error:', error);
     res.status(500).json({
@@ -285,6 +288,9 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
       data: listing,
       message: 'Listing updated successfully',
     });
+
+    // Invalidate feed cache
+    cache.flushAll();
   } catch (error) {
     console.error('Update listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to update listing' });
@@ -346,6 +352,9 @@ export const updateListingStatus = async (req: Request, res: Response): Promise<
       data: listing,
       message: `Listing marked as ${status.toLowerCase()}`,
     });
+
+    // Invalidate feed cache
+    cache.flushAll();
   } catch (error) {
     console.error('Update status error:', error);
     res.status(500).json({ success: false, message: 'Failed to update status' });
@@ -378,6 +387,9 @@ export const deleteListing = async (req: Request, res: Response): Promise<void> 
       success: true,
       message: 'Listing deleted successfully',
     });
+
+    // Invalidate feed cache
+    cache.flushAll();
   } catch (error) {
     console.error('Delete listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete listing' });
@@ -439,6 +451,9 @@ export const renewListing = async (req: Request, res: Response): Promise<void> =
       message: 'Listing renewed for 30 days',
       data: listing
     });
+
+    // Invalidate feed cache
+    cache.flushAll();
   } catch (error) {
     console.error('Renew listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to renew listing' });
@@ -466,6 +481,9 @@ export const adminDeleteListing = async (req: Request, res: Response): Promise<v
       success: true,
       message: 'Listing forcefully deleted by admin',
     });
+
+    // Invalidate feed cache
+    cache.flushAll();
   } catch (error) {
     console.error('Admin delete listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete listing' });

@@ -136,8 +136,19 @@ const listingSchema = new Schema<IListing>(
   }
 );
 
-// Compound index for browsing: active listings sorted by newest
-listingSchema.index({ status: 1, category: 1, createdAt: -1 });
+// Compound indexes following Equality-Sort-Range (ESR) rule
+// 1. Browsing by Newest (with category)
+listingSchema.index({ status: 1, category: 1, createdAt: -1, expiresAt: 1 });
+// 2. Browsing by Newest (all categories)
+listingSchema.index({ status: 1, createdAt: -1, expiresAt: 1 });
+
+// 3. Browsing by Price (with category)
+listingSchema.index({ status: 1, category: 1, price: 1, expiresAt: 1 });
+listingSchema.index({ status: 1, category: 1, price: -1, expiresAt: 1 });
+
+// 4. Browsing by Price (all categories)
+listingSchema.index({ status: 1, price: 1, expiresAt: 1 });
+listingSchema.index({ status: 1, price: -1, expiresAt: 1 });
 
 // Text index for search
 listingSchema.index({ title: 'text', description: 'text' });
