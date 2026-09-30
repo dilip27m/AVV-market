@@ -13,6 +13,19 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "CampusMart | College Marketplace",
   description: "A private marketplace for your campus. Buy, sell, and report lost items.",
+  openGraph: {
+    title: "CampusMart | College Marketplace",
+    description: "A private marketplace for your campus. Buy, sell, and report lost items.",
+    url: "https://campusmart.vercel.app", // Adjust domain later
+    siteName: "CampusMart",
+    locale: "en_IN",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CampusMart | College Marketplace",
+    description: "A private marketplace for your campus. Buy, sell, and report lost items.",
+  },
 };
 
 export default function RootLayout({
