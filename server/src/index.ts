@@ -14,12 +14,15 @@ import reportRoutes from './routes/report.routes';
 import missingItemRoutes from './routes/missingItem.routes';
 import commentRoutes from './routes/comment.routes';
 
+import compression from 'compression';
+
 // ============================================================
 // Express App Setup
 // ============================================================
 const app = express();
 
 // --- Middleware ---
+app.use(compression());
 
 // CORS — only allow requests from the frontend
 app.use(

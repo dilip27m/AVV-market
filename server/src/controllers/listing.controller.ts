@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import { Listing } from '../models/Listing';
 import cloudinary from '../config/cloudinary';
 import { Readable } from 'stream';
+import NodeCache from 'node-cache';
+
+// Cache for 60 seconds
+const cache = new NodeCache({ stdTTL: 60 });
 
 // ============================================================
 // Helper: Upload buffer to Cloudinary
@@ -141,6 +145,16 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
         sortOption = { createdAt: -1 };
     }
 
+    // Generate unique cache key based on query params
+    const cacheKey = `listings_${page}_${limit}_${category || 'all'}_${sort}_${search || ''}`;
+    
+    // Check if we have a cached response
+    const cachedResponse = cache.get(cacheKey);
+    if (cachedResponse) {
+      res.status(200).json(cachedResponse);
+      return;
+    }
+
     const [listings, total] = await Promise.all([
       Listing.find(filter)
         .sort(sortOption)
@@ -150,7 +164,7 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
       Listing.countDocuments(filter),
     ]);
 
-    res.status(200).json({
+    const responseData = {
       success: true,
       data: {
         listings,
@@ -162,7 +176,12 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
           hasMore: skip + limitNum < total,
         },
       },
-    });
+    };
+
+    // Save to cache before returning
+    cache.set(cacheKey, responseData);
+
+    res.status(200).json(responseData);
   } catch (error) {
     console.error('Get listings error:', error);
     res.status(500).json({

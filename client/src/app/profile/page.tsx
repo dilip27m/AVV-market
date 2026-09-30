@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -106,8 +107,9 @@ export default function Profile() {
           <div className="md:col-span-2 space-y-6">
             <div className="panel-card flex items-center gap-6">
               {user.profileImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.profileImage} alt={user.name} className="h-20 w-20 rounded-full object-cover border border-border-subtle" />
+                <div className="relative h-20 w-20 rounded-full overflow-hidden border border-border-subtle">
+                  <Image src={user.profileImage} alt={user.name} fill sizes="80px" className="object-cover" />
+                </div>
               ) : (
                 <div className="h-20 w-20 rounded-full bg-brand-primary flex items-center justify-center text-3xl text-white font-bold">
                   {user.name.charAt(0)}
@@ -136,9 +138,8 @@ export default function Profile() {
                 <div className="space-y-4">
                   {activeListings.map(listing => (
                     <div key={listing._id} className="flex gap-4 py-4 border-b border-border-subtle items-center last:border-0">
-                      <div className="w-16 h-16 rounded-md bg-bg-panel overflow-hidden flex-shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {listing.images?.[0] && <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />}
+                      <div className="relative w-16 h-16 rounded-md bg-bg-panel overflow-hidden flex-shrink-0">
+                        {listing.images?.[0] && <Image src={listing.images[0]} alt="" fill sizes="64px" className="object-cover" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <Link href={`/listing/${listing._id}`} className="font-semibold text-text-primary hover:text-brand-primary truncate block">
@@ -166,9 +167,8 @@ export default function Profile() {
                 <div className="space-y-4">
                   {expiredListings.map(listing => (
                     <div key={listing._id} className="flex gap-4 py-4 border-b border-border-subtle items-center last:border-0">
-                      <div className="w-16 h-16 rounded-md bg-bg-panel overflow-hidden flex-shrink-0 grayscale">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {listing.images?.[0] && <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />}
+                      <div className="relative w-16 h-16 rounded-md bg-bg-panel overflow-hidden flex-shrink-0 grayscale">
+                        {listing.images?.[0] && <Image src={listing.images[0]} alt="" fill sizes="64px" className="object-cover" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <span className="font-semibold text-text-muted truncate block">
@@ -210,9 +210,8 @@ export default function Profile() {
                 <div className="space-y-4">
                   {wishlist.map(listing => (
                     <div key={listing._id} className="flex gap-4 py-4 border-b border-border-subtle items-center last:border-0">
-                      <div className="w-16 h-16 rounded-md bg-bg-panel overflow-hidden flex-shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {listing.images?.[0] && <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />}
+                      <div className="relative w-16 h-16 rounded-md bg-bg-panel overflow-hidden flex-shrink-0">
+                        {listing.images?.[0] && <Image src={listing.images[0]} alt="" fill sizes="64px" className="object-cover" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <Link href={`/listing/${listing._id}`} className="font-semibold text-text-primary hover:text-brand-primary truncate block">

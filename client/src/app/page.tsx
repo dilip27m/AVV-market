@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { ListingCard } from '@/components/ListingCard';
+import { ListingCardSkeleton } from '@/components/ListingCardSkeleton';
 import { LISTING_CATEGORIES } from '@/lib/constants';
 import { api } from '@/lib/api';
 
@@ -151,9 +152,10 @@ export default function Home() {
         </div>
 
         {isLoading ? (
-          <div className="py-20 text-center">
-            <div className="w-8 h-8 rounded-full border-4 border-border-subtle border-t-brand-primary animate-spin mx-auto mb-4"></div>
-            <p className="text-text-muted">Loading items...</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+              <ListingCardSkeleton key={i} />
+            ))}
           </div>
         ) : error ? (
           <div className="py-20 text-center text-red-500">

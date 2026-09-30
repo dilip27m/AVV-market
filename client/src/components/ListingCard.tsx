@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface ListingCardProps {
   listing: {
@@ -28,11 +29,12 @@ export function ListingCard({ listing }: ListingCardProps) {
       
       {/* Image Container */}
       <div className="relative aspect-[4/3] w-full bg-bg-hover overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img 
+        <Image 
           src={imageUrl} 
           alt={listing.title}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          fill
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          className="object-cover group-hover:scale-105 transition-transform duration-300"
         />
         <div className="absolute top-2 right-2 bg-bg-base/90 backdrop-blur-sm px-2 py-1 rounded-md text-xs font-semibold text-text-primary shadow-sm border border-border-subtle">
           {listing.condition}

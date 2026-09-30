@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -229,12 +230,13 @@ export default function ListingDetails() {
 
           {/* Image Gallery */}
           <div className="space-y-4">
-            <div className="aspect-video w-full bg-bg-panel rounded-xl overflow-hidden border border-border-subtle flex items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img 
+            <div className="relative aspect-video w-full bg-bg-panel rounded-xl overflow-hidden border border-border-subtle flex items-center justify-center">
+              <Image 
                 src={listing.images[activeImage]} 
                 alt={listing.title}
-                className="w-full h-full object-cover"
+                fill
+                sizes="(max-width: 768px) 100vw, 800px"
+                className="object-cover"
               />
             </div>
             {listing.images.length > 1 && (
@@ -245,8 +247,15 @@ export default function ListingDetails() {
                     onClick={() => setActiveImage(idx)}
                     className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-colors ${activeImage === idx ? 'border-brand-primary' : 'border-transparent opacity-70 hover:opacity-100'}`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
+                    <div className="relative w-full h-full">
+                      <Image 
+                        src={src} 
+                        alt={`Thumbnail ${idx + 1}`} 
+                        fill
+                        sizes="80px"
+                        className="object-cover" 
+                      />
+                    </div>
                   </button>
                 ))}
               </div>
