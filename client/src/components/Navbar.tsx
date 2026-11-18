@@ -28,19 +28,21 @@ export function Navbar() {
           <div className="h-6 w-6 rounded bg-brand-primary flex items-center justify-center text-[var(--text-on-brand)] text-xs font-bold">
             CM
           </div>
-          <span className="font-semibold text-lg tracking-tight">CampusMart</span>
+          <span className="font-semibold text-lg tracking-tight hidden min-[400px]:inline">CampusMart</span>
         </Link>
-        
-        <div className="flex items-center gap-4">
-          <Link href="/lost-and-found" className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors">
+
+        <div className="flex items-center gap-3 sm:gap-4">
+          <Link href="/lost-and-found" className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
             Lost & Found
           </Link>
-          <div className="h-4 w-[1px] bg-border-subtle mx-2" />
-          
+          <div className="h-4 w-[1px] bg-border-subtle hidden sm:block" />
+
           {user ? (
             <div className="relative" ref={dropdownRef}>
-              <button 
+              <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
+                aria-label="Account menu"
+                aria-expanded={dropdownOpen}
                 className="flex items-center gap-2 hover:opacity-80 transition-opacity"
               >
                 {user.profileImage ? (
@@ -63,10 +65,12 @@ export function Navbar() {
                   <Link href="/profile" className="block px-4 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary" onClick={() => setDropdownOpen(false)}>
                     My Profile
                   </Link>
-                  <Link href="/sell" className="block px-4 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary sm:hidden" onClick={() => setDropdownOpen(false)}>
-                    Sell Item
-                  </Link>
-                  <button 
+                  {user.isAdmin && (
+                    <Link href="/admin" className="block px-4 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary" onClick={() => setDropdownOpen(false)}>
+                      Admin Dashboard
+                    </Link>
+                  )}
+                  <button
                     onClick={() => { setDropdownOpen(false); logout(); }}
                     className="w-full text-left block px-4 py-2 text-sm text-red-500 hover:bg-bg-hover"
                   >
@@ -81,8 +85,9 @@ export function Navbar() {
             </Link>
           )}
 
-          <Link href="/sell" className="btn-primary text-sm hidden sm:flex">
-            Sell Item
+          <Link href="/sell" className="btn-primary text-sm px-4 py-2 sm:px-5 sm:py-3">
+            <span className="sm:hidden">+ Sell</span>
+            <span className="hidden sm:inline">Sell Item</span>
           </Link>
         </div>
       </div>

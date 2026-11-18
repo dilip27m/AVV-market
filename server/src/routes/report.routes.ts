@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { reportListing, getReports, updateReportStatus } from '../controllers/report.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { authMiddleware, requireAdmin } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -8,7 +8,7 @@ const router = Router();
 router.post('/', authMiddleware, reportListing);
 
 // Admin / Dashboard routes
-router.get('/', authMiddleware, getReports);
-router.patch('/:id/status', authMiddleware, updateReportStatus);
+router.get('/', authMiddleware, requireAdmin, getReports);
+router.patch('/:id/status', authMiddleware, requireAdmin, updateReportStatus);
 
 export default router;

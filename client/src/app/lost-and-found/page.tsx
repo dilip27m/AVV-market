@@ -33,17 +33,17 @@ export default function LostAndFound() {
     return `https://wa.me/${finalPhone}?text=${encodeURIComponent(text || '')}`;
   };
 
-  const filteredItems = items.filter(item => 
-    (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const filteredItems = items.filter(item =>
+    (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (item.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
-      
+
       <main className="flex-1 flex flex-col p-6 sm:p-12 md:p-24 max-w-5xl mx-auto w-full">
-        
+
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
           <div>
@@ -106,14 +106,18 @@ export default function LostAndFound() {
                   <p className="text-sm mb-3">
                     <span className="text-text-muted">Last seen:</span> {item.lastSeenLocation}
                   </p>
-                  <a 
-                    href={getWhatsAppLink(item.reporterId?.phone, `Hi ${item.reporterId?.name || ''}, I might have found the "${item.title}" you reported missing on CampusMart.`)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-secondary w-full text-sm flex justify-center items-center"
-                  >
-                    Contact Reporter
-                  </a>
+                  {item.reporterId?.phone ? (
+                    <a
+                      href={getWhatsAppLink(item.reporterId.phone, `Hi ${item.reporterId?.name || ''}, I might have found the "${item.title}" you reported missing on CampusMart.`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-secondary w-full text-sm flex justify-center items-center"
+                    >
+                      Contact on WhatsApp
+                    </a>
+                  ) : (
+                    <p className="text-xs text-text-muted text-center">Reporter hasn&apos;t shared a contact number.</p>
+                  )}
                 </div>
               </div>
             ))}

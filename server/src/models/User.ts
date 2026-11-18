@@ -15,6 +15,7 @@ export interface IUser extends Document {
   totalRatings: number;
   totalItemsSold: number;
   wishlist: mongoose.Types.ObjectId[];
+  role: 'user' | 'admin';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,14 +75,15 @@ const userSchema = new Schema<IUser>(
       type: [{ type: Schema.Types.ObjectId, ref: 'Listing' }],
       default: [],
     },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
+    },
   },
   {
     timestamps: true, // auto createdAt + updatedAt
   }
 );
-
-// Indexes for common queries
-userSchema.index({ email: 1 });
-userSchema.index({ googleId: 1 });
 
 export const User = mongoose.model<IUser>('User', userSchema);

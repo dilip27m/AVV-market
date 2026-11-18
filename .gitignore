@@ -36,3 +36,11 @@ coverage/
 # Misc
 *.tsbuildinfo
 next-env.d.ts
+
+# Secrets
+atlas-credentials.env
+*credentials*.env
+
+# Generated PWA files
+client/public/sw.js
+client/public/workbox-*.js

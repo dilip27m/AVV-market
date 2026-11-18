@@ -8,6 +8,7 @@ const fetcher = (url: string) => api.get(url).then(res => res.data.data);
 
 interface LoadMoreProps {
   initialListings: any[];
+  initialHasMore: boolean;
   searchParams: {
     category: string;
     search: string;
@@ -15,11 +16,12 @@ interface LoadMoreProps {
   };
 }
 
-export function LoadMoreListings({ initialListings, searchParams }: LoadMoreProps) {
+export function LoadMoreListings({ initialListings, initialHasMore, searchParams }: LoadMoreProps) {
   // SWR Infinite key function
   const getKey = (pageIndex: number, previousPageData: any) => {
     // If we've reached the end, return null
-    if (previousPageData && !previousPageData.listings?.length) return null;
+    if (pageIndex === 0 && !initialHasMore) return null;
+    if (previousPageData && (!previousPageData.listings?.length || !previousPageData.pagination?.hasMore)) return null;
     
     // pageIndex is 0 for the first client fetch, but we already have initialListings from SSR!
     // So the API page is pageIndex + 2 (since SSR loaded page 1)
@@ -46,8 +48,9 @@ export function LoadMoreListings({ initialListings, searchParams }: LoadMoreProp
     return `/listings?${params.toString()}`;
   };
 
-  const { data, error, isLoading, size, setSize, isValidating } = useSWRInfinite(getKey, fetcher, {
-    revalidateFirstPage: false, // Don't refetch the first page because we have it from SSR
+  const { data, isLoading, size, setSize, isValidating } = useSWRInfinite(getKey, fetcher, {
+    revalidateFirstPage: false,
+    initialSize: 0, // Don't fetch anything until the user asks for more
   });
 
   const isLoadingMore = isLoading || (size > 0 && data && typeof data[size - 1] === "undefined");
@@ -65,7 +68,7 @@ export function LoadMoreListings({ initialListings, searchParams }: LoadMoreProp
   
   // The backend returns hasMore in pagination
   const lastPageData = data ? data[data.length - 1] : null;
-  const hasMore = lastPageData ? lastPageData.pagination?.hasMore : (initialListings.length === 20); // backend limits to 20 by default
+  const hasMore = lastPageData ? lastPageData.pagination?.hasMore : initialHasMore;
 
   if (additionalListings.length === 0 && !hasMore) return null;
 

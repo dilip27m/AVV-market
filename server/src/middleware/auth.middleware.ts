@@ -104,3 +104,21 @@ export const optionalAuth = async (
 
   next();
 };
+
+/**
+ * Returns true if the user is an admin — either via the `role` field
+ * or because their email is listed in the ADMIN_EMAILS env var.
+ */
+export const isAdminUser = (user?: IUser | null): boolean =>
+  !!user && (user.role === 'admin' || env.ADMIN_EMAILS.includes(user.email.toLowerCase()));
+
+/**
+ * Admin-only guard. Must be used AFTER authMiddleware.
+ */
+export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
+  if (!isAdminUser(req.user)) {
+    res.status(403).json({ success: false, message: 'Admin access required.' });
+    return;
+  }
+  next();
+};

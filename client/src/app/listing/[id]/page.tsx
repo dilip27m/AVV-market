@@ -6,7 +6,8 @@ import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, getErrorMessage } from '@/lib/api';
+import { ReportDialog } from '@/components/ReportDialog';
 import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -18,14 +19,21 @@ export default function ListingDetails() {
 
   const [activeImage, setActiveImage] = useState(0);
   const { user } = useAuth();
-  
+
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // SWR Hooks
   const { data: listing, error: listingError, isLoading: isListingLoading, mutate: mutateListing } = useSWR(id ? `/listings/${id}` : null, fetcher);
   const { data: comments = [], mutate: mutateComments } = useSWR(id ? `/comments/${id}` : null, fetcher);
   const { data: wishlistData, mutate: mutateWishlist } = useSWR(user ? '/users/me/wishlist' : null, fetcher);
+  const sellerIdForRating = listing?.sellerId?._id;
+  const { data: myRating, mutate: mutateMyRating } = useSWR<number | null>(
+    user && sellerIdForRating && user._id !== sellerIdForRating ? `/ratings/${sellerIdForRating}/mine` : null,
+    fetcher
+  );
 
   // Derived state
   const isSaved = wishlistData?.map((item: any) => item._id || item).includes(id) || false;
@@ -56,10 +64,15 @@ export default function ListingDetails() {
     );
   }
 
-  const postedAt = new Date(listing.createdAt).toLocaleDateString();
+  const postedAt = new Date(listing.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const sellerObjectId: string | undefined = listing.sellerId?._id || (typeof listing.sellerId === 'string' ? listing.sellerId : undefined);
+  const isOwner = !!user && user._id === sellerObjectId;
+  const isSold = listing.status === 'SOLD';
+  const isUnavailable = isSold || listing.status === 'DELETED' || listing.isExpired;
+  const contactPhone: string = listing.sellerPhone || listing.sellerId?.phone || '';
 
   const generateWhatsAppLink = () => {
-    let sellerPhone = listing.sellerId?.phone || listing.sellerPhone;
+    let sellerPhone = contactPhone;
     if (sellerPhone) {
       sellerPhone = sellerPhone.replace(/\D/g, '');
       if (sellerPhone.length === 10) {
@@ -74,7 +87,7 @@ export default function ListingDetails() {
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
-    
+
     try {
       setIsSubmittingComment(true);
       const { data } = await api.post(`/comments/${id}`, { text: newComment });
@@ -90,10 +103,10 @@ export default function ListingDetails() {
 
   const handleDeleteComment = async (commentId: string) => {
     if (!confirm('Are you sure you want to delete this comment?')) return;
-    
+
     // Optimistic UI
     mutateComments(comments.filter((c: any) => c._id !== commentId), false);
-    
+
     try {
       await api.delete(`/comments/${commentId}`);
       toast.success('Comment deleted');
@@ -111,9 +124,10 @@ export default function ListingDetails() {
       return;
     }
     try {
-      const res = await api.post(`/users/${listing.sellerId._id}/rate`, { rating });
-      toast.success('Thanks for rating this seller!');
-      
+      const res = await api.post('/ratings', { sellerId: sellerObjectId, rating });
+      toast.success(myRating ? 'Rating updated' : 'Thanks for rating this seller!');
+      mutateMyRating(rating, false);
+
       // Update listing state optimistically
       mutateListing({
         ...listing,
@@ -124,35 +138,29 @@ export default function ListingDetails() {
         }
       }, false);
     } catch (err) {
-      toast.error('Failed to rate seller.');
+      toast.error(getErrorMessage(err, 'Failed to rate seller.'));
     }
   };
 
-  const handleReportListing = async () => {
+  const handleSetStatus = async (status: 'SOLD' | 'ACTIVE') => {
+    setIsUpdatingStatus(true);
+    try {
+      await api.patch(`/listings/${listing._id}/status`, { status });
+      mutateListing({ ...listing, status }, false);
+      toast.success(status === 'SOLD' ? 'Marked as sold. Congrats! 🎉' : 'Listing is live again');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to update listing.'));
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleReportListing = () => {
     if (!user) {
       toast.error('You must be logged in to report a listing.');
       return;
     }
-    const reason = window.prompt('Reason for reporting? (e.g. SPAM, WRONG_INFO, ALREADY_SOLD, INAPPROPRIATE, OTHER)');
-    if (!reason) return;
-    
-    const validReasons = ['SPAM', 'WRONG_INFO', 'ALREADY_SOLD', 'INAPPROPRIATE', 'OTHER'];
-    const formattedReason = validReasons.includes(reason.toUpperCase()) ? reason.toUpperCase() : 'OTHER';
-
-    try {
-      await api.post('/reports', {
-        listingId: listing._id,
-        reason: formattedReason,
-        description: reason,
-      });
-      toast.success('Listing reported to moderators. Thank you.');
-    } catch (err: any) {
-      if (err.response?.status === 409) {
-        toast.error('You have already reported this listing.');
-      } else {
-        toast.error('Failed to report listing.');
-      }
-    }
+    setIsReportOpen(true);
   };
 
   const handleToggleSave = async () => {
@@ -160,15 +168,15 @@ export default function ListingDetails() {
       toast.error('You must be logged in to save listings.');
       return;
     }
-    
+
     const wasSaved = isSaved;
-    
+
     // Optimistic UI update
     mutateWishlist((prev: any[] = []) => {
       if (wasSaved) return prev.filter((item: any) => (item._id || item) !== id);
       return [...prev, id];
     }, false);
-    
+
     try {
       const res = await api.post(`/users/wishlist/${id}`);
       if (res.data.data.added) {
@@ -199,17 +207,17 @@ export default function ListingDetails() {
   return (
     <div className="flex flex-col min-h-screen bg-bg-base">
       <Navbar />
-      
+
       <main className="flex-1 flex flex-col p-4 sm:p-8 md:p-12 max-w-6xl mx-auto w-full gap-8 md:flex-row">
-        
+
         {/* Left Column: Images & Description */}
         <div className="flex-1 space-y-8">
-          
+
           {/* Breadcrumbs */}
-          <nav className="text-sm text-text-muted flex gap-2">
+          <nav aria-label="Breadcrumb" className="text-sm text-text-muted flex gap-2 min-w-0">
             <Link href="/" className="hover:text-text-primary">Home</Link>
             <span>›</span>
-            <Link href={`/category/${listing.category.toLowerCase()}`} className="hover:text-text-primary">{listing.category}</Link>
+            <Link href={`/?category=${encodeURIComponent(listing.category)}`} className="hover:text-text-primary">{listing.category}</Link>
             <span>›</span>
             <span className="text-text-primary truncate">{listing.title}</span>
           </nav>
@@ -217,31 +225,39 @@ export default function ListingDetails() {
           {/* Image Gallery */}
           <div className="space-y-4">
             <div className="relative aspect-video w-full bg-bg-panel rounded-xl overflow-hidden border border-border-subtle flex items-center justify-center">
-              {listing.images && listing.images.length > 0 && (
-                <Image 
-                  src={listing.images[activeImage]} 
+              {listing.images && listing.images.length > 0 ? (
+                <Image
+                  src={listing.images[activeImage] || listing.images[0]}
                   alt={listing.title}
                   fill
+                  priority
                   sizes="(max-width: 768px) 100vw, 800px"
-                  className="object-cover"
+                  className={`object-contain ${isUnavailable ? 'grayscale-[60%]' : ''}`}
                 />
+              ) : (
+                <span className="text-sm text-text-muted">No photos</span>
+              )}
+              {isUnavailable && (
+                <span className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-black/80 text-white text-sm font-semibold tracking-wide">
+                  {isSold ? 'SOLD' : listing.status === 'DELETED' ? 'REMOVED' : 'EXPIRED'}
+                </span>
               )}
             </div>
             {listing.images && listing.images.length > 1 && (
               <div className="flex gap-4 overflow-x-auto pb-2">
                 {listing.images.map((src: string, idx: number) => (
-                  <button 
+                  <button
                     key={idx}
                     onClick={() => setActiveImage(idx)}
                     className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-colors ${activeImage === idx ? 'border-brand-primary' : 'border-transparent opacity-70 hover:opacity-100'}`}
                   >
                     <div className="relative w-full h-full">
-                      <Image 
-                        src={src} 
-                        alt={`Thumbnail ${idx + 1}`} 
+                      <Image
+                        src={src}
+                        alt={`Thumbnail ${idx + 1}`}
                         fill
                         sizes="80px"
-                        className="object-cover" 
+                        className="object-cover"
                       />
                     </div>
                   </button>
@@ -262,7 +278,7 @@ export default function ListingDetails() {
               </span>
             </div>
             <p className="text-text-secondary leading-relaxed whitespace-pre-wrap">
-              {listing.description}
+              {listing.description || 'No description provided.'}
             </p>
           </div>
 
@@ -291,8 +307,8 @@ export default function ListingDetails() {
                           <span className="text-xs text-text-muted">
                             {new Date(comment.createdAt).toLocaleDateString()}
                           </span>
-                          {user && user._id === comment.userId && (
-                            <button 
+                          {user && (user._id === comment.userId || isOwner) && (
+                            <button
                               onClick={() => handleDeleteComment(comment._id)}
                               className="text-xs text-red-500 hover:underline"
                             >
@@ -326,8 +342,8 @@ export default function ListingDetails() {
                     maxLength={1000}
                     disabled={isSubmittingComment}
                   />
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={!newComment.trim() || isSubmittingComment}
                     className="btn-primary text-sm px-4 whitespace-nowrap"
                   >
@@ -349,13 +365,13 @@ export default function ListingDetails() {
         {/* Right Column: Sticky Info Panel */}
         <div className="w-full md:w-80 lg:w-96 flex-shrink-0">
           <div className="sticky top-20 space-y-6">
-            
+
             {/* Price & Title Card */}
             <div className="panel-card space-y-4">
               <div className="flex justify-between items-start gap-4">
                 <h1 className="text-2xl font-bold leading-tight">{listing.title}</h1>
               </div>
-              
+
               <div className="flex items-end gap-3 pt-2">
                 <span className="text-3xl font-bold text-brand-primary">₹{listing.price.toLocaleString('en-IN')}</span>
                 {listing.isNegotiable && (
@@ -370,29 +386,37 @@ export default function ListingDetails() {
             {/* Seller & Action Card */}
             <div className="panel-card space-y-6">
               <h3 className="text-lg font-semibold">Seller Info</h3>
-              
+
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-brand-primary text-white font-bold text-xl rounded-full flex items-center justify-center flex-shrink-0">
-                  {(listing.sellerId?.name || listing.sellerName).charAt(0)}
-                </div>
+                {listing.sellerId?.profileImage ? (
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden border border-border-subtle flex-shrink-0">
+                    <Image src={listing.sellerId.profileImage} alt="" fill sizes="48px" className="object-cover" />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 bg-brand-primary text-[var(--text-on-brand)] font-bold text-xl rounded-full flex items-center justify-center flex-shrink-0">
+                    {(listing.sellerId?.name || listing.sellerName).charAt(0)}
+                  </div>
+                )}
                 <div>
-                  <Link href={`/profile/${listing.sellerId?._id || 'unknown'}`} className="font-semibold text-text-primary hover:underline hover:text-brand-primary">
+                  <Link href={sellerObjectId ? `/seller/${sellerObjectId}` : '#'} className="font-semibold text-text-primary hover:underline hover:text-brand-primary">
                     {listing.sellerId?.name || listing.sellerName}
                   </Link>
                   <p className="text-sm text-text-secondary">
-                    ⭐ {listing.sellerId?.averageRating || 0} ({listing.sellerId?.totalRatings || 0} ratings)
+                    ⭐ {(listing.sellerId?.averageRating || 0).toFixed(1)} ({listing.sellerId?.totalRatings || 0} {listing.sellerId?.totalRatings === 1 ? 'rating' : 'ratings'})
+                    {listing.sellerId?.totalItemsSold ? ` · ${listing.sellerId.totalItemsSold} sold` : ''}
                   </p>
                 </div>
               </div>
-              
-              {user && user._id !== (listing.sellerId?._id || listing.sellerId) && (
+
+              {user && !isOwner && (
                 <div className="pt-2 pl-[64px] flex items-center gap-1">
-                  <span className="text-xs text-text-muted mr-1">Rate:</span>
+                  <span className="text-xs text-text-muted mr-1">{myRating ? 'Your rating:' : 'Rate seller:'}</span>
                   {[1, 2, 3, 4, 5].map((star) => (
-                    <button 
-                      key={star} 
+                    <button
+                      key={star}
                       onClick={() => handleRateSeller(star)}
-                      className="text-text-muted hover:text-yellow-400 transition-colors"
+                      aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                      className={`text-lg transition-colors hover:text-yellow-400 ${myRating && star <= myRating ? 'text-yellow-400' : 'text-text-muted'}`}
                     >
                       ★
                     </button>
@@ -402,14 +426,36 @@ export default function ListingDetails() {
 
               <div className="space-y-1 border-t border-border-subtle pt-4">
                 <p className="text-xs text-text-muted uppercase font-semibold tracking-wider">Meet Address</p>
-                <p className="text-sm text-text-primary font-medium">{listing.meetAddress}</p>
+                <p className="text-sm text-text-primary font-medium">{listing.meetAddress || 'Ask the seller'}</p>
               </div>
 
               <div className="pt-2 flex flex-col gap-3">
-                {listing.sellerId?.phone || listing.sellerPhone ? (
-                  <a 
-                    href={generateWhatsAppLink()} 
-                    target="_blank" 
+                {isOwner ? (
+                  <>
+                    <Link
+                      href={`/listing/${listing._id}/edit`}
+                      className="w-full flex items-center justify-center gap-2 btn-primary rounded-xl"
+                    >
+                      Edit listing
+                    </Link>
+                    {listing.status !== 'DELETED' && (
+                      <button
+                        onClick={() => handleSetStatus(isSold ? 'ACTIVE' : 'SOLD')}
+                        disabled={isUpdatingStatus}
+                        className="w-full flex items-center justify-center gap-2 bg-bg-base hover:bg-bg-hover text-text-primary font-semibold py-3 px-4 rounded-xl transition-colors border border-border-subtle disabled:opacity-60"
+                      >
+                        {isSold ? 'Mark as available' : 'Mark as sold'}
+                      </button>
+                    )}
+                  </>
+                ) : isUnavailable ? (
+                  <div className="w-full text-center bg-bg-hover text-text-secondary font-semibold py-3 px-4 rounded-xl border border-border-subtle">
+                    {isSold ? 'This item has been sold' : 'This listing is no longer available'}
+                  </div>
+                ) : contactPhone ? (
+                  <a
+                    href={generateWhatsAppLink()}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebd5a] text-white font-semibold py-3 px-4 rounded-xl transition-colors shadow-sm"
                   >
@@ -419,15 +465,12 @@ export default function ListingDetails() {
                     Chat on WhatsApp
                   </a>
                 ) : (
-                  <button 
-                    disabled
-                    className="w-full flex items-center justify-center gap-2 bg-bg-hover text-text-muted font-semibold py-3 px-4 rounded-xl cursor-not-allowed border border-border-subtle"
-                  >
-                    No WhatsApp Provided
-                  </button>
+                  <p className="w-full text-center text-sm bg-bg-hover text-text-muted py-3 px-4 rounded-xl border border-border-subtle">
+                    The seller hasn&apos;t added a WhatsApp number yet. Ask a question below.
+                  </p>
                 )}
-                
-                <button 
+
+                <button
                   onClick={handleShare}
                   className="w-full flex items-center justify-center gap-2 bg-bg-base hover:bg-bg-hover text-text-primary font-semibold py-3 px-4 rounded-xl transition-colors border border-border-subtle shadow-sm"
                 >
@@ -436,13 +479,13 @@ export default function ListingDetails() {
                   </svg>
                   Share Listing
                 </button>
-                
-                {user && user._id !== (listing.sellerId?._id || listing.sellerId) && (
-                  <button 
+
+                {!isOwner && (
+                  <button
                     onClick={handleToggleSave}
                     className={`w-full flex items-center justify-center gap-2 font-semibold py-3 px-4 rounded-xl transition-colors border shadow-sm ${
-                      isSaved 
-                        ? 'bg-red-50 text-red-500 border-red-200 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50' 
+                      isSaved
+                        ? 'bg-red-50 text-red-500 border-red-200 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50'
                         : 'bg-bg-base hover:bg-bg-hover text-text-primary border-border-subtle'
                     }`}
                   >
@@ -456,8 +499,9 @@ export default function ListingDetails() {
             </div>
 
             {/* Subtle Report Button */}
+            {!isOwner && (
             <div className="flex justify-center pt-2">
-              <button 
+              <button
                 onClick={handleReportListing}
                 className="text-xs text-text-muted hover:text-red-500 transition-colors flex items-center gap-1"
               >
@@ -467,10 +511,12 @@ export default function ListingDetails() {
                 Report this listing
               </button>
             </div>
+            )}
 
           </div>
         </div>
       </main>
+      <ReportDialog listingId={listing._id} open={isReportOpen} onClose={() => setIsReportOpen(false)} />
     </div>
   );
 }

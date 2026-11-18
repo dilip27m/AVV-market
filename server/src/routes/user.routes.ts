@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getUserProfile, updateProfile, getUserListings, rateUser, toggleWishlist, getWishlist } from '../controllers/user.controller';
+import { getUserProfile, updateProfile, getUserListings, toggleWishlist, getWishlist } from '../controllers/user.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -8,7 +8,6 @@ const router = Router();
 router.put('/me', authMiddleware, updateProfile);
 router.post('/wishlist/:listingId', authMiddleware, toggleWishlist);
 router.get('/me/wishlist', authMiddleware, getWishlist);
-router.post('/:id/rate', authMiddleware, rateUser);
 
 // Public
 router.get('/:id', getUserProfile);

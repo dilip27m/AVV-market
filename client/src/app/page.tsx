@@ -38,6 +38,8 @@ export default async function Home({
   if (sort) query.append('sort', sort);
 
   let listings: Listing[] = [];
+  let total = 0;
+  let hasMore = false;
   let error = '';
 
   try {
@@ -52,6 +54,8 @@ export default async function Home({
 
     const json = await res.json();
     listings = json.data?.listings || [];
+    total = json.data?.pagination?.total ?? listings.length;
+    hasMore = !!json.data?.pagination?.hasMore;
   } catch (err) {
     console.error('Error fetching listings:', err);
     error = 'Failed to load listings. Please try again later.';
@@ -79,7 +83,7 @@ export default async function Home({
           <h2 className="text-xl font-bold">
             {category === 'All' ? 'Recently Listed' : category}
           </h2>
-          <span className="text-sm text-text-muted">{formattedListings.length} results</span>
+          <span className="text-sm text-text-muted">{total} {total === 1 ? 'item' : 'items'}</span>
         </div>
 
         {error ? (
@@ -94,7 +98,8 @@ export default async function Home({
               ))}
             </div>
             <LoadMoreListings 
-              initialListings={formattedListings} 
+              initialListings={formattedListings}
+              initialHasMore={hasMore}
               searchParams={{ category, search, sort }} 
             />
           </>

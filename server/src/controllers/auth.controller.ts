@@ -3,6 +3,7 @@ import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
 import { env } from '../config/env';
+import { isAdminUser } from '../middleware/auth.middleware';
 
 const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
@@ -61,6 +62,11 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
 
     const { sub: googleId, email, name, picture } = payload;
 
+    if (!payload.email_verified) {
+      res.status(401).json({ success: false, message: 'Please use a verified Google account' });
+      return;
+    }
+
     if (!email || !googleId) {
       res.status(400).json({
         success: false,
@@ -102,6 +108,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
           averageRating: user.averageRating,
           totalRatings: user.totalRatings,
           totalItemsSold: user.totalItemsSold,
+          isAdmin: isAdminUser(user),
         },
         accessToken,
         refreshToken,
@@ -147,6 +154,7 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
         averageRating: user.averageRating,
         totalRatings: user.totalRatings,
         totalItemsSold: user.totalItemsSold,
+        isAdmin: isAdminUser(user),
       },
     });
   } catch (error) {

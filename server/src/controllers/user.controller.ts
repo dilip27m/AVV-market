@@ -1,35 +1,43 @@
 import { Request, Response } from 'express';
 import { User } from '../models/User';
 import { Listing } from '../models/Listing';
+import { isObjectId, normalizePhone } from '../utils/validate';
+import { invalidateListingsCache } from './listing.controller';
+
+// Fields that are safe to show to anyone (no email, phone, or wishlist)
+const PUBLIC_PROFILE_FIELDS = 'name profileImage meetAddress averageRating totalRatings totalItemsSold createdAt';
+
+// Fields the owner sees about themselves
+const PRIVATE_PROFILE_FIELDS = '-googleId -__v -wishlist';
 
 // ============================================================
 // GET /api/users/:id
 //
-// Get a user's public profile.
+// Public seller profile. Only exposes non-sensitive fields.
 // ============================================================
 export const getUserProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = await User.findById(req.params.id)
-      .select('-googleId -__v')
-      .lean();
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    const user = await User.findById(req.params.id).select(PUBLIC_PROFILE_FIELDS).lean();
 
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found' });
       return;
     }
 
-    // Count active listings
     const activeListings = await Listing.countDocuments({
       sellerId: user._id,
       status: 'ACTIVE',
+      expiresAt: { $gt: new Date() },
     });
 
     res.status(200).json({
       success: true,
-      data: {
-        ...user,
-        activeListings,
-      },
+      data: { ...user, activeListings },
     });
   } catch (error) {
     console.error('Get user profile error:', error);
@@ -40,27 +48,62 @@ export const getUserProfile = async (req: Request, res: Response): Promise<void>
 // ============================================================
 // PUT /api/users/me
 //
-// Update the current user's profile.
-// Only allows updating: name, phone, meetAddress.
+// Update own profile. Phone / name / meet address changes are
+// copied onto the user's existing listings so buyers always see
+// up-to-date contact details.
 // ============================================================
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, phone, meetAddress } = req.body;
 
     const updateData: Record<string, string> = {};
-    if (name !== undefined) updateData.name = name;
-    if (phone !== undefined) updateData.phone = phone;
-    if (meetAddress !== undefined) updateData.meetAddress = meetAddress;
+
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
+        res.status(400).json({ success: false, message: 'Name must be 1–100 characters' });
+        return;
+      }
+      updateData.name = name.trim();
+    }
+
+    if (phone !== undefined) {
+      const normalized = normalizePhone(phone);
+      if (normalized === null) {
+        res.status(400).json({ success: false, message: 'Enter a valid 10-digit mobile number' });
+        return;
+      }
+      updateData.phone = normalized;
+    }
+
+    if (meetAddress !== undefined) {
+      if (typeof meetAddress !== 'string' || meetAddress.length > 200) {
+        res.status(400).json({ success: false, message: 'Meet address is too long' });
+        return;
+      }
+      updateData.meetAddress = meetAddress.trim();
+    }
 
     const user = await User.findByIdAndUpdate(
       req.userId,
       { $set: updateData },
       { new: true, runValidators: true }
-    ).select('-googleId -__v');
+    ).select(PRIVATE_PROFILE_FIELDS);
 
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found' });
       return;
+    }
+
+    // Keep denormalized seller info on listings in sync
+    const listingUpdate: Record<string, string> = {};
+    if (updateData.name) listingUpdate.sellerName = updateData.name;
+    if (updateData.phone !== undefined) listingUpdate.sellerPhone = updateData.phone;
+    if (Object.keys(listingUpdate).length > 0) {
+      await Listing.updateMany(
+        { sellerId: req.userId, status: { $in: ['ACTIVE', 'SOLD'] } },
+        { $set: listingUpdate }
+      );
+      invalidateListingsCache();
     }
 
     res.status(200).json({
@@ -77,21 +120,25 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 // ============================================================
 // GET /api/users/:id/listings
 //
-// Get a user's active listings (public).
+// Public: a seller's live listings (for their storefront page).
 // ============================================================
 export const getUserListings = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!isObjectId(req.params.id)) {
+      res.status(200).json({ success: true, data: [] });
+      return;
+    }
+
     const listings = await Listing.find({
       sellerId: req.params.id,
       status: 'ACTIVE',
+      expiresAt: { $gt: new Date() },
     })
+      .select('title price condition category meetAddress sellerName sellerId createdAt isNegotiable images')
       .sort({ createdAt: -1 })
       .lean();
 
-    res.status(200).json({
-      success: true,
-      data: listings,
-    });
+    res.status(200).json({ success: true, data: listings });
   } catch (error) {
     console.error('Get user listings error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch listings' });
@@ -99,82 +146,43 @@ export const getUserListings = async (req: Request, res: Response): Promise<void
 };
 
 // ============================================================
-// POST /api/users/:id/rate
-//
-// Rate a seller.
-// ============================================================
-export const rateUser = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { rating } = req.body;
-    const numRating = Number(rating);
-
-    if (isNaN(numRating) || numRating < 1 || numRating > 5) {
-      res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
-      return;
-    }
-
-    const targetUser = await User.findById(req.params.id);
-    if (!targetUser) {
-      res.status(404).json({ success: false, message: 'User not found' });
-      return;
-    }
-
-    // Simplistic rating: just update running average
-    const currentTotal = targetUser.totalRatings || 0;
-    const currentAvg = targetUser.averageRating || 0;
-
-    const newTotal = currentTotal + 1;
-    const newAvg = ((currentAvg * currentTotal) + numRating) / newTotal;
-
-    targetUser.totalRatings = newTotal;
-    targetUser.averageRating = Number(newAvg.toFixed(1)); // keep 1 decimal
-    await targetUser.save();
-
-    res.status(200).json({
-      success: true,
-      data: {
-        averageRating: targetUser.averageRating,
-        totalRatings: targetUser.totalRatings,
-      },
-    });
-  } catch (error) {
-    console.error('Rate user error:', error);
-    res.status(500).json({ success: false, message: 'Failed to rate user' });
-  }
-};
-
-// ============================================================
 // POST /api/users/wishlist/:listingId
-//
-// Toggle a listing in the user's wishlist
 // ============================================================
 export const toggleWishlist = async (req: Request, res: Response): Promise<void> => {
   try {
-    const listingId = req.params.listingId;
+    const { listingId } = req.params;
+    if (!isObjectId(listingId)) {
+      res.status(400).json({ success: false, message: 'Invalid listing ID' });
+      return;
+    }
+
     const user = await User.findById(req.userId);
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found' });
       return;
     }
 
-    const index = user.wishlist.findIndex(id => id.toString() === listingId);
+    const index = user.wishlist.findIndex((id) => id.toString() === listingId);
     let added = false;
-    
+
     if (index === -1) {
-      // Add to wishlist
+      const exists = await Listing.exists({ _id: listingId, status: { $ne: 'DELETED' } });
+      if (!exists) {
+        res.status(404).json({ success: false, message: 'Listing not found' });
+        return;
+      }
       user.wishlist.push(listingId as any);
       added = true;
     } else {
-      // Remove from wishlist
       user.wishlist.splice(index, 1);
     }
-    
+
     await user.save();
-    
+
     res.status(200).json({
       success: true,
       data: { wishlist: user.wishlist, added },
-      message: added ? 'Added to wishlist' : 'Removed from wishlist'
+      message: added ? 'Added to wishlist' : 'Removed from wishlist',
     });
   } catch (error) {
     console.error('Toggle wishlist error:', error);
@@ -185,20 +193,24 @@ export const toggleWishlist = async (req: Request, res: Response): Promise<void>
 // ============================================================
 // GET /api/users/me/wishlist
 //
-// Get the user's wishlisted listings
+// Saved listings, excluding ones that were deleted.
 // ============================================================
 export const getWishlist = async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = await User.findById(req.userId).populate('wishlist');
+    const user = await User.findById(req.userId).populate({
+      path: 'wishlist',
+      match: { status: { $ne: 'DELETED' } },
+      select: 'title price images status expiresAt isNegotiable',
+    });
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found' });
       return;
     }
 
-    // Filter out active wishlist items only (optional, depends on if we want to show expired/sold)
     res.status(200).json({
       success: true,
-      data: user.wishlist,
+      // populate+match leaves nulls for filtered-out items
+      data: user.wishlist.filter(Boolean),
     });
   } catch (error) {
     console.error('Get wishlist error:', error);

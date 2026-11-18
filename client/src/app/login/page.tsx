@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import { useState } from 'react';
+import { safeRedirectPath } from '@/lib/auth-tokens';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +20,8 @@ export default function LoginPage() {
     if (credentialResponse.credential) {
       const success = await login(credentialResponse.credential);
       if (success) {
-        router.push('/');
+        const redirect = new URLSearchParams(window.location.search).get('redirect');
+        router.replace(safeRedirectPath(redirect));
       } else {
         setError('Failed to authenticate. Please try again.');
         setIsLoading(false);
@@ -37,7 +39,7 @@ export default function LoginPage() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center min-h-screen bg-bg-base p-4">
       <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 font-semibold text-lg hover:opacity-80 transition-opacity">
-        <div className="h-6 w-6 rounded bg-brand-primary flex items-center justify-center text-white text-xs font-bold">
+        <div className="h-6 w-6 rounded bg-brand-primary flex items-center justify-center text-[var(--text-on-brand)] text-xs font-bold">
           CM
         </div>
         CampusMart
@@ -76,7 +78,8 @@ export default function LoginPage() {
         </div>
 
         <p className="text-xs text-text-muted max-w-sm mt-4">
-          By signing in, you agree to CampusMart's Terms of Service and Privacy Policy.
+          We only use your Google name, email and photo to create your account.
+          Your phone number is shown only on your listings so buyers can reach you.
         </p>
       </div>
     </div>

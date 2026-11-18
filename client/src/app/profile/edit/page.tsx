@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { useAuth } from '@/context/AuthContext';
-import { api } from '@/lib/api';
+import { api, getErrorMessage, redirectToLogin } from '@/lib/api';
+import toast from 'react-hot-toast';
 
 export default function EditProfile() {
-  const { user, login } = useAuth(); // login is our AuthContext func to update local user state
+  const { user, isLoading, setUser } = useAuth();
   const router = useRouter();
 
   const [name, setName] = useState('');
@@ -15,6 +16,10 @@ export default function EditProfile() {
   const [meetAddress, setMeetAddress] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!isLoading && !user) redirectToLogin();
+  }, [isLoading, user]);
 
   // Pre-fill the form
   useEffect(() => {
@@ -31,24 +36,28 @@ export default function EditProfile() {
       setError('Name is required');
       return;
     }
+    const digits = phone.replace(/\D/g, '').slice(-10);
+    if (phone.trim() && !/^[6-9]\d{9}$/.test(digits)) {
+      setError('Enter a valid 10-digit mobile number');
+      return;
+    }
     setError('');
     setIsSaving(true);
 
     try {
       const { data } = await api.put('/users/me', {
-        name,
-        phone,
-        meetAddress
+        name: name.trim(),
+        phone: phone.trim() ? digits : '',
+        meetAddress: meetAddress.trim(),
       });
-      // The backend returns the updated user object. Update context:
-      if (data.success && data.data) {
-        // Force a hard reload so AuthContext refetches the updated user data from the backend
-        window.location.href = '/profile';
+
+      if (data.success && data.data && user) {
+        setUser({ ...user, ...data.data });
+        toast.success('Profile updated');
+        router.push('/profile');
       }
-    } catch (err: any) {
-      console.error('Failed to update profile', err);
-      setError('Failed to update profile. Please try again.');
-    } finally {
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update profile. Please try again.'));
       setIsSaving(false);
     }
   };
@@ -67,7 +76,7 @@ export default function EditProfile() {
   return (
     <div className="flex flex-col min-h-screen bg-bg-base">
       <Navbar />
-      
+
       <main className="flex-1 flex flex-col p-4 sm:p-8 max-w-2xl mx-auto w-full">
         <div className="panel-card space-y-6">
           <h1 className="text-2xl font-bold">Edit Profile</h1>
@@ -104,8 +113,10 @@ export default function EditProfile() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full flex-1 border-l-0 pl-2"
-                  placeholder="9490004752"
-                  maxLength={10}
+                  placeholder="98XXXXXXXX"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  maxLength={14}
                 />
               </div>
               <p className="text-xs text-text-muted">
