@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import { MissingItem } from '../models/MissingItem';
+import { MissingItem, MISSING_STATUS } from '../models/MissingItem';
+import { asString } from '../utils/validate';
 import cloudinary from '../config/cloudinary';
 import { Readable } from 'stream';
 
@@ -91,23 +92,22 @@ export const createMissingItem = async (req: Request, res: Response): Promise<vo
 // ============================================================
 export const getMissingItems = async (req: Request, res: Response): Promise<void> => {
   try {
-    const {
-      page = '1',
-      limit = '20',
-      search,
-      status = 'MISSING',
-    } = req.query;
+    const page = asString(req.query.page) || '1';
+    const limit = asString(req.query.limit) || '20';
+    const search = asString(req.query.search, 100);
+    const rawStatus = asString(req.query.status) || 'MISSING';
+    const status = (MISSING_STATUS as readonly string[]).includes(rawStatus) ? rawStatus : 'MISSING';
 
-    const pageNum = Math.max(1, parseInt(page as string, 10));
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit as string, 10)));
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const skip = (pageNum - 1) * limitNum;
 
     const filter: Record<string, unknown> = {
-      status: status as string,
+      status,
     };
 
     if (search) {
-      filter.$text = { $search: search as string };
+      filter.$text = { $search: search };
     }
 
     const [items, total] = await Promise.all([

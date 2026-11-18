@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Rating } from '../models/Rating';
 import { User } from '../models/User';
+import { isObjectId } from '../utils/validate';
 
 // ============================================================
 // POST /api/ratings
@@ -13,6 +14,11 @@ export const rateSeller = async (req: Request, res: Response): Promise<void> => 
     const { sellerId, rating } = req.body;
     const raterId = req.userId!;
 
+    if (!isObjectId(sellerId)) {
+      res.status(400).json({ success: false, message: 'Invalid seller ID' });
+      return;
+    }
+
     // Can't rate yourself
     if (sellerId === raterId) {
       res.status(400).json({
@@ -24,7 +30,7 @@ export const rateSeller = async (req: Request, res: Response): Promise<void> => 
 
     // Validate rating value
     const ratingNum = Number(rating);
-    if (!ratingNum || ratingNum < 1 || ratingNum > 5) {
+    if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
       res.status(400).json({
         success: false,
         message: 'Rating must be between 1 and 5',
@@ -116,5 +122,29 @@ export const getSellerRatings = async (req: Request, res: Response): Promise<voi
       success: false,
       message: 'Failed to fetch ratings',
     });
+  }
+};
+
+// ============================================================
+// GET /api/ratings/:sellerId/mine
+//
+// The current user's existing rating for a seller (or null).
+// Lets the UI show "You rated 4★" and allow changing it.
+// ============================================================
+export const getMyRatingForSeller = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isObjectId(req.params.sellerId)) {
+      res.status(400).json({ success: false, message: 'Invalid seller ID' });
+      return;
+    }
+    const existing = await Rating.findOne({
+      sellerId: req.params.sellerId,
+      raterId: req.userId,
+    }).lean();
+
+    res.status(200).json({ success: true, data: existing ? existing.rating : null });
+  } catch (error) {
+    console.error('Get my rating error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch rating' });
   }
 };

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 
 // ============================================================
 // Error Response Interface
@@ -21,6 +22,20 @@ export const errorMiddleware = (
   _next: NextFunction
 ): void => {
   console.error('❌ Error:', err.message);
+
+  // Upload errors (file too large, too many files, wrong type)
+  if (err instanceof multer.MulterError) {
+    const message =
+      err.code === 'LIMIT_FILE_SIZE' ? 'Each image must be under 5MB.'
+      : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE' ? 'Too many images.'
+      : 'Image upload failed.';
+    res.status(400).json({ success: false, message });
+    return;
+  }
+  if (err.message === 'Only image files are allowed') {
+    res.status(400).json({ success: false, message: err.message });
+    return;
+  }
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
@@ -54,6 +69,7 @@ export const errorMiddleware = (
   const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
     success: false,
-    message: err.message || 'Internal server error',
+    // Don't leak internal error details to clients
+    message: statusCode < 500 ? err.message : 'Internal server error',
   });
 };

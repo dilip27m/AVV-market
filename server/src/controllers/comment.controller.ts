@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { Comment } from '../models/Comment';
+import { Listing } from '../models/Listing';
+import { isObjectId } from '../utils/validate';
 
 // ============================================================
 // GET /api/comments/:listingId
@@ -9,9 +11,14 @@ import { Comment } from '../models/Comment';
 export const getCommentsForListing = async (req: Request, res: Response): Promise<void> => {
   try {
     const { listingId } = req.params;
+    if (!isObjectId(listingId)) {
+      res.status(200).json({ success: true, data: [] });
+      return;
+    }
 
     const comments = await Comment.find({ listingId })
       .sort({ createdAt: 1 }) // oldest first makes it read like a conversation
+      .limit(200)
       .lean();
 
     res.status(200).json({
@@ -35,8 +42,17 @@ export const addComment = async (req: Request, res: Response): Promise<void> => 
     const { text } = req.body;
     const user = req.user!;
 
-    if (!text || text.trim().length === 0) {
+    if (typeof text !== 'string' || text.trim().length === 0) {
       res.status(400).json({ success: false, message: 'Comment text is required' });
+      return;
+    }
+    if (text.length > 1000) {
+      res.status(400).json({ success: false, message: 'Comment cannot exceed 1000 characters' });
+      return;
+    }
+
+    if (!isObjectId(listingId) || !(await Listing.exists({ _id: listingId, status: { $ne: 'DELETED' } }))) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
       return;
     }
 
@@ -66,6 +82,11 @@ export const addComment = async (req: Request, res: Response): Promise<void> => 
 // ============================================================
 export const deleteComment = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'Comment not found' });
+      return;
+    }
+
     const comment = await Comment.findById(req.params.id);
 
     if (!comment) {
@@ -74,7 +95,11 @@ export const deleteComment = async (req: Request, res: Response): Promise<void> 
     }
 
     // Only the user who made the comment can delete it
-    if (comment.userId.toString() !== req.userId) {
+    // The comment author OR the seller of the listing can delete it
+    const isAuthor = comment.userId.toString() === req.userId;
+    const isListingOwner = !!(await Listing.exists({ _id: comment.listingId, sellerId: req.userId }));
+
+    if (!isAuthor && !isListingOwner) {
       res.status(403).json({ success: false, message: 'Not authorized to delete this comment' });
       return;
     }

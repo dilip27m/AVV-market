@@ -1,11 +1,23 @@
 import { Request, Response } from 'express';
-import { Listing } from '../models/Listing';
+import { Listing, LISTING_CATEGORIES, ITEM_CONDITIONS } from '../models/Listing';
+import { User } from '../models/User';
+import { Report } from '../models/Report';
 import cloudinary from '../config/cloudinary';
 import { Readable } from 'stream';
 import NodeCache from 'node-cache';
+import { isAdminUser } from '../middleware/auth.middleware';
+import { asString, isObjectId, normalizePhone } from '../utils/validate';
 
 // Cache for 60 seconds
 const cache = new NodeCache({ stdTTL: 60 });
+
+/** Clear the browse-feed cache (call after any listing mutation). */
+export const invalidateListingsCache = (): void => {
+  cache.flushAll();
+};
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const SORT_OPTIONS = ['newest', 'oldest', 'price_low', 'price_high'] as const;
 
 // ============================================================
 // Helper: Upload buffer to Cloudinary
@@ -29,10 +41,7 @@ const uploadToCloudinary = (
         if (error || !result) {
           reject(error || new Error('Upload failed'));
         } else {
-          resolve({
-            secure_url: result.secure_url,
-            public_id: result.public_id,
-          });
+          resolve({ secure_url: result.secure_url, public_id: result.public_id });
         }
       }
     );
@@ -44,56 +53,159 @@ const uploadToCloudinary = (
   });
 };
 
+const uploadFiles = async (files: Request['files']): Promise<string[]> => {
+  if (!files || !Array.isArray(files) || files.length === 0) return [];
+  const results = await Promise.all(
+    files.map((file) => uploadToCloudinary(file.buffer, 'avv-market/listings'))
+  );
+  return results.map((r) => r.secure_url);
+};
+
+// ============================================================
+// Helper: Validate listing fields from a multipart body.
+// `partial` = true for edits (fields may be omitted).
+// Returns either the cleaned fields or an error message.
+// ============================================================
+type ListingFields = {
+  title?: string;
+  description?: string;
+  category?: string;
+  price?: number;
+  isNegotiable?: boolean;
+  condition?: string;
+  meetAddress?: string;
+};
+
+const validateListingBody = (
+  body: Record<string, unknown>,
+  partial: boolean
+): { fields: ListingFields } | { error: string } => {
+  const fields: ListingFields = {};
+
+  if (body.title !== undefined || !partial) {
+    const title = asString(body.title, 1000);
+    if (!title || title.length < 3) return { error: 'Title must be at least 3 characters' };
+    if (title.length > 150) return { error: 'Title cannot exceed 150 characters' };
+    fields.title = title;
+  }
+
+  if (body.description !== undefined) {
+    if (typeof body.description !== 'string') return { error: 'Invalid description' };
+    if (body.description.length > 1000) return { error: 'Description cannot exceed 1000 characters' };
+    fields.description = body.description.trim();
+  }
+
+  if (body.category !== undefined || !partial) {
+    const category = asString(body.category);
+    if (!category || !(LISTING_CATEGORIES as readonly string[]).includes(category)) {
+      return { error: 'Please choose a valid category' };
+    }
+    fields.category = category;
+  }
+
+  if (body.price !== undefined || !partial) {
+    const price = Number(body.price);
+    if (!Number.isFinite(price) || price < 0 || price > 1_000_000) {
+      return { error: 'Enter a valid price' };
+    }
+    fields.price = Math.round(price);
+  }
+
+  if (body.isNegotiable !== undefined) {
+    fields.isNegotiable = body.isNegotiable === 'true' || body.isNegotiable === true;
+  }
+
+  if (body.condition !== undefined) {
+    const condition = asString(body.condition);
+    if (!condition || !(ITEM_CONDITIONS as readonly string[]).includes(condition)) {
+      return { error: 'Please choose a valid condition' };
+    }
+    fields.condition = condition;
+  }
+
+  if (body.meetAddress !== undefined) {
+    if (typeof body.meetAddress !== 'string' || body.meetAddress.length > 200) {
+      return { error: 'Meet address is too long' };
+    }
+    fields.meetAddress = body.meetAddress.trim();
+  }
+
+  return { fields };
+};
+
 // ============================================================
 // POST /api/listings
 //
 // Create a new listing with image uploads.
-// Images are uploaded to Cloudinary, URLs stored in MongoDB.
+// The seller's phone comes from the form; if their profile has no
+// phone / meet address yet, we save these as their defaults.
 // ============================================================
 export const createListing = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = req.user!;
-    const { title, description, category, price, isNegotiable, condition, meetAddress } = req.body;
 
-    // Upload images to Cloudinary concurrently
-    let imageUrls: string[] = [];
-    if (req.files && Array.isArray(req.files)) {
-      const uploadPromises = req.files.map(file => 
-        uploadToCloudinary(file.buffer, 'avv-market/listings')
-      );
-      const results = await Promise.all(uploadPromises);
-      imageUrls = results.map(result => result.secure_url);
+    const result = validateListingBody(req.body, false);
+    if ('error' in result) {
+      res.status(400).json({ success: false, message: result.error });
+      return;
     }
+    const { fields } = result;
+
+    const phone = req.body.sellerPhone !== undefined ? normalizePhone(req.body.sellerPhone) : user.phone;
+    if (phone === null) {
+      res.status(400).json({ success: false, message: 'Enter a valid 10-digit WhatsApp number' });
+      return;
+    }
+    const sellerPhone = phone || user.phone || '';
+    if (!sellerPhone) {
+      res.status(400).json({
+        success: false,
+        message: 'Add a WhatsApp number so buyers can contact you',
+      });
+      return;
+    }
+
+    const meetAddress = fields.meetAddress || user.meetAddress || '';
+    if (!meetAddress) {
+      res.status(400).json({ success: false, message: 'Add a meet-up location' });
+      return;
+    }
+
+    const imageUrls = await uploadFiles(req.files);
 
     const listing = await Listing.create({
       sellerId: user._id,
-      title,
-      description: description || '',
+      title: fields.title,
+      description: fields.description || '',
       images: imageUrls,
-      category,
-      price: Number(price),
-      isNegotiable: isNegotiable === 'true' || isNegotiable === true,
-      condition: condition || 'Used - Good',
+      category: fields.category,
+      price: fields.price,
+      isNegotiable: fields.isNegotiable ?? false,
+      condition: fields.condition || 'Used - Good',
       sellerName: user.name,
-      sellerPhone: user.phone || '',
-      meetAddress: meetAddress || user.meetAddress || '',
+      sellerPhone,
+      meetAddress,
       status: 'ACTIVE',
     });
+
+    // Remember contact details as profile defaults for next time
+    const profileDefaults: Record<string, string> = {};
+    if (!user.phone) profileDefaults.phone = sellerPhone;
+    if (!user.meetAddress) profileDefaults.meetAddress = meetAddress;
+    if (Object.keys(profileDefaults).length > 0) {
+      await User.findByIdAndUpdate(user._id, { $set: profileDefaults });
+    }
+
+    invalidateListingsCache();
 
     res.status(201).json({
       success: true,
       data: listing,
       message: 'Listing created successfully',
     });
-
-    // Invalidate feed cache so the new item shows up instantly
-    cache.flushAll();
   } catch (error) {
     console.error('Create listing error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create listing',
-    });
+    res.status(500).json({ success: false, message: 'Failed to create listing' });
   }
 };
 
@@ -101,23 +213,26 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
 // GET /api/listings
 //
 // Browse listings with pagination, filtering, and sorting.
-// Query params: page, limit, category, sort, search
+// Query params: page, limit, category, sort, search, cursor
 // ============================================================
 export const getListings = async (req: Request, res: Response): Promise<void> => {
   try {
-    const {
-      page = '1',
-      limit = '20',
-      category,
-      sort = 'newest',
-      search,
-      cursor,
-    } = req.query;
+    const page = asString(req.query.page) || '1';
+    const limit = asString(req.query.limit) || '20';
+    const rawCategory = asString(req.query.category);
+    const rawSort = asString(req.query.sort) || 'newest';
+    const search = asString(req.query.search, 100);
+    const rawCursor = asString(req.query.cursor);
 
-    const pageNum = Math.max(1, parseInt(page as string, 10));
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit as string, 10)));
-    
-    // If using cursor-based pagination, we don't use offset skipping
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+    const sort = (SORT_OPTIONS as readonly string[]).includes(rawSort) ? rawSort : 'newest';
+    const category =
+      rawCategory && (LISTING_CATEGORIES as readonly string[]).includes(rawCategory) ? rawCategory : undefined;
+    // Cursor pagination only applies to date sorts
+    const cursor =
+      rawCursor && isObjectId(rawCursor) && (sort === 'newest' || sort === 'oldest') ? rawCursor : undefined;
+
     const skip = cursor ? 0 : (pageNum - 1) * limitNum;
 
     // Build filter query
@@ -125,53 +240,37 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
       status: 'ACTIVE',
       expiresAt: { $gt: new Date() },
     };
+    if (category) filter.category = category;
+    if (search) filter.$text = { $search: search };
 
-    if (category && category !== 'All') {
-      filter.category = category;
-    }
+    // Base filter (without cursor) is used for the total count
+    const countFilter = { ...filter };
+    if (cursor) filter._id = sort === 'oldest' ? { $gt: cursor } : { $lt: cursor };
 
-    // Text search
-    if (search) {
-      filter.$text = { $search: search as string };
-    }
-
-    // Cursor filter for simple _id sorting
-    if (cursor) {
-      if (sort === 'newest' || !sort) {
-        filter._id = { $lt: cursor };
-      } else if (sort === 'oldest') {
-        filter._id = { $gt: cursor };
-      }
-      // For price sorting, cursor pagination is more complex, so it seamlessly falls back to 'page' skipping.
-    }
-
-    // Build sort
-    let sortOption: Record<string, 1 | -1> = { createdAt: -1 }; // newest first
+    let sortOption: Record<string, 1 | -1>;
     switch (sort) {
       case 'price_low':
-        sortOption = { price: 1 };
+        sortOption = { price: 1, _id: -1 };
         break;
       case 'price_high':
-        sortOption = { price: -1 };
+        sortOption = { price: -1, _id: -1 };
         break;
       case 'oldest':
-        sortOption = { createdAt: 1 };
+        sortOption = { createdAt: 1, _id: 1 };
         break;
       default:
-        sortOption = { createdAt: -1 };
+        sortOption = { createdAt: -1, _id: -1 };
     }
 
-    // Generate unique cache key based on query params
-    const cacheKey = `listings_${page}_${limit}_${category || 'all'}_${sort}_${search || ''}`;
-    
-    // Check if we have a cached response
+    const cacheKey = `listings_${pageNum}_${limitNum}_${category || 'all'}_${sort}_${search || ''}_${cursor || ''}`;
     const cachedResponse = cache.get(cacheKey);
     if (cachedResponse) {
       res.status(200).json(cachedResponse);
       return;
     }
 
-    const [listings, total] = await Promise.all([
+    // Fetch one extra item to know whether another page exists
+    const [results, total] = await Promise.all([
       Listing.find(filter)
         .select({
           title: 1,
@@ -181,16 +280,20 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
           meetAddress: 1,
           sellerName: 1,
           sellerId: 1,
+          isNegotiable: 1,
           createdAt: 1,
           images: { $slice: 1 }, // Only fetch the first image for the feed
         })
-        .populate('sellerId', 'name averageRating') // Fix: Actually fetch the seller's rating
+        .populate('sellerId', 'name averageRating')
         .sort(sortOption)
         .skip(skip)
-        .limit(limitNum)
+        .limit(limitNum + 1)
         .lean(),
-      Listing.countDocuments(filter),
+      Listing.countDocuments(countFilter),
     ]);
+
+    const hasMore = results.length > limitNum;
+    const listings = results.slice(0, limitNum);
 
     const responseData = {
       success: true,
@@ -201,53 +304,53 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
           limit: limitNum,
           total,
           totalPages: Math.ceil(total / limitNum),
-          hasMore: skip + limitNum < total,
+          hasMore,
         },
       },
     };
 
-    // Save to cache before returning
     cache.set(cacheKey, responseData);
-
     res.status(200).json(responseData);
   } catch (error) {
     console.error('Get listings error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch listings',
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch listings' });
   }
 };
 
 // ============================================================
 // GET /api/listings/:id
 //
-// Get a single listing by ID with seller info.
+// Single listing with seller info. Deleted listings are hidden
+// from everyone except the owner and admins.
 // ============================================================
 export const getListingById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const listing = await Listing.findById(req.params.id)
-      .populate('sellerId', 'name email profileImage averageRating totalRatings meetAddress phone')
-      .lean();
-
-    if (!listing) {
-      res.status(404).json({
-        success: false,
-        message: 'Listing not found',
-      });
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
       return;
     }
 
+    const listing = await Listing.findById(req.params.id)
+      .populate('sellerId', 'name profileImage averageRating totalRatings totalItemsSold meetAddress phone createdAt')
+      .lean();
+
+    const sellerId = (listing?.sellerId as { _id?: unknown } | undefined)?._id?.toString();
+    const isOwner = !!req.userId && sellerId === req.userId;
+
+    if (!listing || (listing.status === 'DELETED' && !isOwner && !isAdminUser(req.user))) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+
+    const isExpired = listing.status === 'ACTIVE' && new Date(listing.expiresAt) <= new Date();
+
     res.status(200).json({
       success: true,
-      data: listing,
+      data: { ...listing, isExpired, isOwner },
     });
   } catch (error) {
     console.error('Get listing error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch listing',
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch listing' });
   }
 };
 
@@ -259,63 +362,70 @@ export const getListingById = async (req: Request, res: Response): Promise<void>
 // ============================================================
 export const updateListing = async (req: Request, res: Response): Promise<void> => {
   try {
-    const listing = await Listing.findById(req.params.id);
-
-    if (!listing) {
+    if (!isObjectId(req.params.id)) {
       res.status(404).json({ success: false, message: 'Listing not found' });
       return;
     }
 
-    // Authorization: only the seller can edit
+    const listing = await Listing.findById(req.params.id);
+
+    if (!listing || listing.status === 'DELETED') {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+
     if (listing.sellerId.toString() !== req.userId) {
       res.status(403).json({ success: false, message: 'Not authorized to edit this listing' });
       return;
     }
 
-    const { title, description, category, price, isNegotiable, condition, meetAddress, existingImages } = req.body;
-
-    // Parse existing images that the user wants to keep
-    let keptImages: string[] = [];
-    if (existingImages) {
-      keptImages = typeof existingImages === 'string'
-        ? JSON.parse(existingImages)
-        : existingImages;
+    const result = validateListingBody(req.body, true);
+    if ('error' in result) {
+      res.status(400).json({ success: false, message: result.error });
+      return;
     }
+    const { fields } = result;
 
-    // Upload new images concurrently
-    let newImageUrls: string[] = [];
-    if (req.files && Array.isArray(req.files)) {
-      const uploadPromises = req.files.map(file => 
-        uploadToCloudinary(file.buffer, 'avv-market/listings')
+    // Only allow keeping images that already belong to this listing
+    let keptImages = listing.images;
+    if (req.body.existingImages !== undefined) {
+      let parsed: unknown = req.body.existingImages;
+      if (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed);
+        } catch {
+          res.status(400).json({ success: false, message: 'Invalid image list' });
+          return;
+        }
+      }
+      if (!Array.isArray(parsed)) {
+        res.status(400).json({ success: false, message: 'Invalid image list' });
+        return;
+      }
+      keptImages = parsed.filter(
+        (url): url is string => typeof url === 'string' && listing.images.includes(url)
       );
-      const results = await Promise.all(uploadPromises);
-      newImageUrls = results.map(result => result.secure_url);
     }
 
-    const allImages = [...keptImages, ...newImageUrls].slice(0, 4);
+    const newImageUrls = await uploadFiles(req.files);
+    listing.images = [...keptImages, ...newImageUrls].slice(0, 4);
 
-    // Update fields
-    listing.title = title || listing.title;
-    listing.description = description !== undefined ? description : listing.description;
-    listing.images = allImages;
-    listing.category = category || listing.category;
-    listing.price = price !== undefined ? Number(price) : listing.price;
-    listing.isNegotiable = isNegotiable !== undefined
-      ? (isNegotiable === 'true' || isNegotiable === true)
-      : listing.isNegotiable;
-    listing.condition = condition || listing.condition;
-    listing.meetAddress = meetAddress || listing.meetAddress;
+    if (fields.title !== undefined) listing.title = fields.title;
+    if (fields.description !== undefined) listing.description = fields.description;
+    if (fields.category !== undefined) listing.category = fields.category as typeof listing.category;
+    if (fields.price !== undefined) listing.price = fields.price;
+    if (fields.isNegotiable !== undefined) listing.isNegotiable = fields.isNegotiable;
+    if (fields.condition !== undefined) listing.condition = fields.condition as typeof listing.condition;
+    if (fields.meetAddress) listing.meetAddress = fields.meetAddress;
 
     await listing.save();
+    invalidateListingsCache();
 
     res.status(200).json({
       success: true,
       data: listing,
       message: 'Listing updated successfully',
     });
-
-    // Invalidate feed cache
-    cache.flushAll();
   } catch (error) {
     console.error('Update listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to update listing' });
@@ -326,23 +436,25 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
 // PATCH /api/listings/:id/status
 //
 // Toggle listing status (ACTIVE ↔ SOLD). Owner only.
-// When marked as SOLD, increments seller's totalItemsSold.
+// Keeps the seller's totalItemsSold counter in sync.
 // ============================================================
 export const updateListingStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status } = req.body;
 
-    if (!['ACTIVE', 'SOLD'].includes(status)) {
-      res.status(400).json({
-        success: false,
-        message: 'Status must be ACTIVE or SOLD',
-      });
+    if (status !== 'ACTIVE' && status !== 'SOLD') {
+      res.status(400).json({ success: false, message: 'Status must be ACTIVE or SOLD' });
+      return;
+    }
+
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
       return;
     }
 
     const listing = await Listing.findById(req.params.id);
 
-    if (!listing) {
+    if (!listing || listing.status === 'DELETED') {
       res.status(404).json({ success: false, message: 'Listing not found' });
       return;
     }
@@ -356,30 +468,20 @@ export const updateListingStatus = async (req: Request, res: Response): Promise<
     listing.status = status;
     await listing.save();
 
-    // Update seller's sold count when marking as sold
-    if (status === 'SOLD' && previousStatus === 'ACTIVE') {
-      const { User } = await import('../models/User');
-      await User.findByIdAndUpdate(listing.sellerId, {
-        $inc: { totalItemsSold: 1 },
-      });
+    if (status === 'SOLD' && previousStatus !== 'SOLD') {
+      await User.findByIdAndUpdate(listing.sellerId, { $inc: { totalItemsSold: 1 } });
+    }
+    if (status === 'ACTIVE' && previousStatus === 'SOLD') {
+      await User.findByIdAndUpdate(listing.sellerId, { $inc: { totalItemsSold: -1 } });
     }
 
-    // Decrement if re-activating a sold item
-    if (status === 'ACTIVE' && previousStatus === 'SOLD') {
-      const { User } = await import('../models/User');
-      await User.findByIdAndUpdate(listing.sellerId, {
-        $inc: { totalItemsSold: -1 },
-      });
-    }
+    invalidateListingsCache();
 
     res.status(200).json({
       success: true,
       data: listing,
       message: `Listing marked as ${status.toLowerCase()}`,
     });
-
-    // Invalidate feed cache
-    cache.flushAll();
   } catch (error) {
     console.error('Update status error:', error);
     res.status(500).json({ success: false, message: 'Failed to update status' });
@@ -393,9 +495,14 @@ export const updateListingStatus = async (req: Request, res: Response): Promise<
 // ============================================================
 export const deleteListing = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+
     const listing = await Listing.findById(req.params.id);
 
-    if (!listing) {
+    if (!listing || listing.status === 'DELETED') {
       res.status(404).json({ success: false, message: 'Listing not found' });
       return;
     }
@@ -407,14 +514,9 @@ export const deleteListing = async (req: Request, res: Response): Promise<void> 
 
     listing.status = 'DELETED';
     await listing.save();
+    invalidateListingsCache();
 
-    res.status(200).json({
-      success: true,
-      message: 'Listing deleted successfully',
-    });
-
-    // Invalidate feed cache
-    cache.flushAll();
+    res.status(200).json({ success: true, message: 'Listing deleted successfully' });
   } catch (error) {
     console.error('Delete listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete listing' });
@@ -424,7 +526,7 @@ export const deleteListing = async (req: Request, res: Response): Promise<void> 
 // ============================================================
 // GET /api/listings/my
 //
-// Get the current user's listings (all statuses except DELETED).
+// The current user's listings (all statuses except DELETED).
 // ============================================================
 export const getMyListings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -435,10 +537,7 @@ export const getMyListings = async (req: Request, res: Response): Promise<void> 
       .sort({ createdAt: -1 })
       .lean();
 
-    res.status(200).json({
-      success: true,
-      data: listings,
-    });
+    res.status(200).json({ success: true, data: listings });
   } catch (error) {
     console.error('Get my listings error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch listings' });
@@ -448,13 +547,18 @@ export const getMyListings = async (req: Request, res: Response): Promise<void> 
 // ============================================================
 // PATCH /api/listings/:id/renew
 //
-// Renew a listing for another 30 days.
+// Renew an active/expired listing for another 30 days.
 // ============================================================
 export const renewListing = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+
     const listing = await Listing.findById(req.params.id);
 
-    if (!listing) {
+    if (!listing || listing.status === 'DELETED') {
       res.status(404).json({ success: false, message: 'Listing not found' });
       return;
     }
@@ -464,33 +568,40 @@ export const renewListing = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Extend expiresAt by 30 days from now
-    listing.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    // If it was somehow EXPIRED (or we want to ensure it's active)
+    if (listing.status === 'SOLD') {
+      res.status(400).json({ success: false, message: 'Sold listings cannot be renewed' });
+      return;
+    }
+
+    listing.expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
     listing.status = 'ACTIVE';
-    
     await listing.save();
+    invalidateListingsCache();
 
     res.status(200).json({
       success: true,
       message: 'Listing renewed for 30 days',
-      data: listing
+      data: listing,
     });
-
-    // Invalidate feed cache
-    cache.flushAll();
   } catch (error) {
     console.error('Renew listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to renew listing' });
   }
 };
+
 // ============================================================
 // DELETE /api/listings/:id/admin
 //
-// Admin delete a listing without checking sellerId
+// Admin-only (enforced by requireAdmin in the route).
+// Removes the listing and resolves its open reports.
 // ============================================================
 export const adminDeleteListing = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+
     const listing = await Listing.findById(req.params.id);
 
     if (!listing) {
@@ -498,17 +609,12 @@ export const adminDeleteListing = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // Force delete or mark as deleted
     listing.status = 'DELETED';
     await listing.save();
+    await Report.updateMany({ listingId: listing._id, status: 'PENDING' }, { status: 'REVIEWED' });
+    invalidateListingsCache();
 
-    res.status(200).json({
-      success: true,
-      message: 'Listing forcefully deleted by admin',
-    });
-
-    // Invalidate feed cache
-    cache.flushAll();
+    res.status(200).json({ success: true, message: 'Listing removed by admin' });
   } catch (error) {
     console.error('Admin delete listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete listing' });

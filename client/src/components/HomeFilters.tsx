@@ -17,23 +17,22 @@ export function HomeFilters() {
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [sortOption, setSortOption] = useState<string>(initialSort);
 
-  // Debounce search query updates to URL
+  // Debounce search/filter changes into the URL (the server page re-fetches from it)
   useEffect(() => {
     const handler = setTimeout(() => {
-      updateUrl(activeCategory, searchQuery, sortOption);
-    }, 500);
+      const params = new URLSearchParams();
+      if (activeCategory !== 'All') params.set('category', activeCategory);
+      if (searchQuery.trim() !== '') params.set('search', searchQuery.trim());
+      if (sortOption !== 'newest') params.set('sort', sortOption); // keep URL clean by defaulting newest
+
+      const next = params.toString();
+      if (next === searchParams.toString()) return; // nothing changed, skip a needless re-fetch
+
+      // replace() avoids filling browser history on every keystroke
+      router.replace(next ? `/?${next}` : '/', { scroll: false });
+    }, 400);
     return () => clearTimeout(handler);
-  }, [searchQuery, activeCategory, sortOption]);
-
-  const updateUrl = (category: string, search: string, sort: string) => {
-    const params = new URLSearchParams();
-    if (category !== 'All') params.set('category', category);
-    if (search.trim() !== '') params.set('search', search.trim());
-    if (sort !== 'newest') params.set('sort', sort); // keep URL clean by defaulting newest
-
-    // Use router.replace to avoid filling browser history on every keystroke
-    router.replace(`/?${params.toString()}`, { scroll: false });
-  };
+  }, [searchQuery, activeCategory, sortOption, router, searchParams]);
 
   return (
     <>

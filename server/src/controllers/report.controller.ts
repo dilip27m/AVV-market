@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
-import { Report } from '../models/Report';
+import { Report, REPORT_REASONS } from '../models/Report';
+import { Listing } from '../models/Listing';
+import { isObjectId } from '../utils/validate';
 
 // ============================================================
 // POST /api/reports
@@ -11,11 +13,26 @@ export const reportListing = async (req: Request, res: Response): Promise<void> 
     const { listingId, reason, description } = req.body;
     const reporterId = req.userId!;
 
-    if (!listingId || !reason) {
+    if (!isObjectId(listingId) || !(REPORT_REASONS as readonly string[]).includes(reason)) {
       res.status(400).json({
         success: false,
-        message: 'Listing ID and reason are required',
+        message: 'Please choose a valid reason',
       });
+      return;
+    }
+
+    if (description !== undefined && (typeof description !== 'string' || description.length > 500)) {
+      res.status(400).json({ success: false, message: 'Description cannot exceed 500 characters' });
+      return;
+    }
+
+    const listing = await Listing.findById(listingId).select('sellerId').lean();
+    if (!listing) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+    if (listing.sellerId.toString() === reporterId) {
+      res.status(400).json({ success: false, message: 'You cannot report your own listing' });
       return;
     }
 
@@ -23,7 +40,7 @@ export const reportListing = async (req: Request, res: Response): Promise<void> 
       listingId,
       reporterId,
       reason,
-      description: description || '',
+      description: (description || '').trim(),
     });
 
     res.status(201).json({
@@ -86,6 +103,11 @@ export const updateReportStatus = async (req: Request, res: Response): Promise<v
     
     if (!['PENDING', 'REVIEWED', 'DISMISSED'].includes(status)) {
       res.status(400).json({ success: false, message: 'Invalid status' });
+      return;
+    }
+
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'Report not found' });
       return;
     }
 

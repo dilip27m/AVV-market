@@ -14,3 +14,15 @@ export const LISTING_CATEGORIES = [
 ] as const;
 
 export type ListingCategory = typeof LISTING_CATEGORIES[number];
+
+export const ITEM_CONDITIONS = ['New', 'Like New', 'Used - Good', 'Used - Fair'] as const;
+
+// Must match REPORT_REASONS on the Express backend
+export const REPORT_REASONS = [
+  'Wrong Information',
+  'Spam',
+  'Inappropriate Item',
+  'Already Sold',
+  'Suspected Stolen Item',
+  'Other',
+] as const;

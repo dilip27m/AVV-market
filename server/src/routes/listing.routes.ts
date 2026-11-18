@@ -10,7 +10,7 @@ import {
   renewListing,
   adminDeleteListing,
 } from '../controllers/listing.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { authMiddleware, optionalAuth, requireAdmin } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
 
 const router = Router();
@@ -23,7 +23,7 @@ router.get('/search', getListings); // Same handler, search via query params
 router.get('/my', authMiddleware, getMyListings);
 
 // Public
-router.get('/:id', getListingById);
+router.get('/:id', optionalAuth, getListingById);
 
 // Protected
 router.post('/', authMiddleware, upload.array('images', 4), createListing);
@@ -31,6 +31,6 @@ router.put('/:id', authMiddleware, upload.array('images', 4), updateListing);
 router.patch('/:id/status', authMiddleware, updateListingStatus);
 router.patch('/:id/renew', authMiddleware, renewListing);
 router.delete('/:id', authMiddleware, deleteListing);
-router.delete('/:id/admin', authMiddleware, adminDeleteListing);
+router.delete('/:id/admin', authMiddleware, requireAdmin, adminDeleteListing);
 
 export default router;

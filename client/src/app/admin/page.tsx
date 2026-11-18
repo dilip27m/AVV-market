@@ -3,17 +3,16 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, getErrorMessage } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const [reports, setReports] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Quick security check (just relying on being logged in for MVP)
-  // In a real app, verify user.role === 'admin'
+  // The server enforces admin access; this just avoids a pointless request
   useEffect(() => {
     const fetchReports = async () => {
       try {
@@ -21,12 +20,13 @@ export default function AdminDashboard() {
         setReports(data.data || []);
       } catch (error) {
         console.error('Failed to load reports', error);
-        toast.error('Failed to load reports (Are you an admin?)');
+        toast.error(getErrorMessage(error, 'Failed to load reports'));
       } finally {
         setIsLoading(false);
       }
     };
-    if (user) fetchReports();
+    if (user?.isAdmin) fetchReports();
+    else setIsLoading(false);
   }, [user]);
 
   const handleUpdateStatus = async (id: string, status: string) => {
@@ -40,10 +40,10 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteListing = async (listingId: string) => {
-    if (!confirm('Are you SURE you want to forcibly delete this listing? This cannot be undone.')) return;
+    if (!confirm('Remove this listing from the marketplace?')) return;
     try {
       await api.delete(`/listings/${listingId}/admin`);
-      toast.success('Listing forcefully deleted');
+      toast.success('Listing removed');
       // Refresh reports after deletion to reflect the deleted state
       const { data } = await api.get('/reports');
       setReports(data.data || []);
@@ -52,12 +52,16 @@ export default function AdminDashboard() {
     }
   };
 
-  if (!user) {
+  if (isAuthLoading) return null;
+
+  if (!user?.isAdmin) {
     return (
       <div className="flex flex-col min-h-screen">
         <Navbar />
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          <h2 className="text-2xl font-bold mb-4">Admin Access Required</h2>
+          <h2 className="text-2xl font-bold mb-2">Admin access required</h2>
+          <p className="text-text-muted mb-6">This page is only for marketplace moderators.</p>
+          <Link href="/" className="btn-primary">Back to marketplace</Link>
         </div>
       </div>
     );
@@ -66,7 +70,7 @@ export default function AdminDashboard() {
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
-      
+
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full">
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -132,13 +136,13 @@ export default function AdminDashboard() {
                         <div className="flex gap-2">
                           {report.status === 'PENDING' && (
                             <>
-                              <button 
+                              <button
                                 onClick={() => handleUpdateStatus(report._id, 'REVIEWED')}
                                 className="px-2 py-1 bg-bg-panel border border-border-subtle hover:bg-bg-hover text-xs font-medium rounded-md transition-colors"
                               >
                                 Mark Reviewed
                               </button>
-                              <button 
+                              <button
                                 onClick={() => handleUpdateStatus(report._id, 'DISMISSED')}
                                 className="px-2 py-1 bg-bg-panel border border-border-subtle hover:bg-bg-hover text-xs font-medium rounded-md transition-colors"
                               >
@@ -147,7 +151,7 @@ export default function AdminDashboard() {
                             </>
                           )}
                           {report.listingId && report.listingId.status !== 'DELETED' && (
-                            <button 
+                            <button
                               onClick={() => handleDeleteListing(report.listingId._id)}
                               className="px-2 py-1 bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 text-xs font-medium rounded-md transition-colors"
                             >

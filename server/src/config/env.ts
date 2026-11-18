@@ -47,4 +47,10 @@ export const env = {
 
   // Client URL (for CORS)
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:3000',
+
+  // Comma-separated list of emails that get admin access (e.g. "a@x.com,b@x.com")
+  ADMIN_EMAILS: (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 };
