@@ -1,11 +1,19 @@
 import { Router } from 'express';
-import { getUserProfile, updateProfile, getUserListings, toggleWishlist, getWishlist } from '../controllers/user.controller';
+import {
+  getUserProfile,
+  updateProfile,
+  getUserListings,
+  toggleWishlist,
+  getWishlist,
+  deleteMyAccount,
+} from '../controllers/user.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
 
 // Protected
 router.put('/me', authMiddleware, updateProfile);
+router.delete('/me', authMiddleware, deleteMyAccount);
 router.post('/wishlist/:listingId', authMiddleware, toggleWishlist);
 router.get('/me/wishlist', authMiddleware, getWishlist);
 

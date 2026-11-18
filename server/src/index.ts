@@ -11,8 +11,8 @@ import listingRoutes from './routes/listing.routes';
 import userRoutes from './routes/user.routes';
 import ratingRoutes from './routes/rating.routes';
 import reportRoutes from './routes/report.routes';
-import missingItemRoutes from './routes/missingItem.routes';
 import commentRoutes from './routes/comment.routes';
+import wantedRoutes from './routes/wanted.routes';
 
 import compression from 'compression';
 import helmet from 'helmet';
@@ -80,7 +80,7 @@ app.get('/api/health', (_req, res) => {
 
 // --- Write-endpoint rate limiters (must be registered BEFORE the routers) ---
 app.post('/api/listings', createLimiter);
-app.post('/api/missing-items', createLimiter);
+app.post('/api/wanted', createLimiter);
 app.post('/api/comments/:listingId', commentLimiter);
 app.post('/api/ratings', ratingReportLimiter);
 app.post('/api/reports', ratingReportLimiter);
@@ -91,8 +91,8 @@ app.use('/api/listings', listingRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/missing-items', missingItemRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/wanted', wantedRoutes);
 
 // --- 404 Handler ---
 app.use((_req, res) => {

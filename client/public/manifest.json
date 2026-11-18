@@ -1,10 +1,10 @@
 {
-  "name": "AVV Market",
+  "name": "CampusMart",
   "short_name": "CampusMart",
-  "description": "Your exclusive college marketplace for buying, selling, and finding lost items securely.",
+  "description": "The campus marketplace. Seniors sell their stuff cheap, juniors grab great deals.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#f6f6fa",
   "theme_color": "#4F46E5",
   "orientation": "portrait-primary",
   "icons": [

@@ -1,49 +1,35 @@
 import { Metadata } from 'next';
-import axios from 'axios';
 
 type Props = {
   params: Promise<{ id: string }>;
   children: React.ReactNode;
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+// Rich previews when a listing link is shared on WhatsApp / Instagram
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
-    const resolvedParams = await params;
-    // We hit the backend directly to fetch the listing data for SEO
-    // Using process.env.NEXT_PUBLIC_API_URL or fallback for SSR
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-    
-    const { data } = await axios.get(`${apiUrl}/listings/${resolvedParams.id}`);
-    const listing = data.data;
+    const { id } = await params;
+    // Always fresh, so edited prices show up immediately in tab titles and share previews
+    const res = await fetch(`${API_URL}/listings/${id}`, { cache: 'no-store' });
+    if (!res.ok) return { title: 'Listing not found' };
 
-    if (!listing) {
-      return { title: 'Listing Not Found | CampusMart' };
-    }
-
-    const title = `${listing.title} - ₹${listing.price} | CampusMart`;
-    const description = listing.description || `Buy ${listing.title} on CampusMart.`;
-    const imageUrl = listing.images?.[0] || 'https://campusmart.vercel.app/og-image.png';
+    const listing = (await res.json()).data;
+    const price = listing.price > 0 ? `₹${listing.price.toLocaleString('en-IN')}` : 'FREE';
+    const title = `${listing.title} · ${price}`;
+    const description =
+      (listing.description || '').slice(0, 160) || `${listing.condition} · ${listing.category}. Pick up on campus.`;
+    const images = listing.images?.[0] ? [{ url: listing.images[0] }] : undefined;
 
     return {
       title,
       description,
-      openGraph: {
-        title,
-        description,
-        images: [{ url: imageUrl }],
-        type: 'website',
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title,
-        description,
-        images: [imageUrl],
-      },
+      openGraph: { title, description, images, type: 'website' },
+      twitter: { card: images ? 'summary_large_image' : 'summary', title, description, images: images?.map((i) => i.url) },
     };
-  } catch (error) {
-    return {
-      title: 'CampusMart | College Marketplace',
-    };
+  } catch {
+    return {};
   }
 }
 

@@ -2,152 +2,197 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Navbar } from '@/components/Navbar';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useParams } from 'next/navigation';
-import { api, getErrorMessage } from '@/lib/api';
-import { ReportDialog } from '@/components/ReportDialog';
-import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
+import { Navbar, Avatar } from '@/components/Navbar';
+import { ImageGallery } from '@/components/ImageGallery';
+import { ReportDialog } from '@/components/ReportDialog';
+import { OfferDialog } from '@/components/OfferDialog';
+import { ListingCard } from '@/components/ListingCard';
+import { api, getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useWishlist } from '@/lib/useWishlist';
+import { discountPercent, formatPrice, leavingLabel, timeAgo, whatsAppLink } from '@/lib/format';
+import { ListingStatus, ListingSummary } from '@/lib/types';
 
-const fetcher = (url: string) => api.get(url).then(res => res.data.data);
+const fetcher = (url: string) => api.get(url).then((res) => res.data.data);
+
+interface ListingSeller {
+  _id: string;
+  name: string;
+  profileImage?: string;
+  averageRating?: number;
+  totalRatings?: number;
+  totalItemsSold?: number;
+  phone?: string;
+  leavingDate?: string | null;
+  isVerified?: boolean;
+  createdAt?: string;
+}
+
+interface ListingDetail {
+  _id: string;
+  title: string;
+  description: string;
+  images: string[];
+  category: string;
+  price: number;
+  originalPrice?: number | null;
+  isNegotiable: boolean;
+  condition: string;
+  sellerName: string;
+  sellerPhone: string;
+  meetAddress: string;
+  status: ListingStatus;
+  expiresAt: string;
+  createdAt: string;
+  isExpired?: boolean;
+  sellerId: ListingSeller;
+}
+
+interface Comment {
+  _id: string;
+  userId: string;
+  userName: string;
+  userProfileImage?: string;
+  text: string;
+  createdAt: string;
+}
+
+const WhatsAppIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.729.729 0 0 0-.529.247c-.182.198-.691.677-.691 1.654 0 .977.71 1.916.81 2.049.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z" />
+  </svg>
+);
 
 export default function ListingDetails() {
   const params = useParams();
   const id = params.id as string;
-
-  const [activeImage, setActiveImage] = useState(0);
   const { user } = useAuth();
+  const confirm = useConfirm();
+  const { isSaved, toggle: toggleSave } = useWishlist();
 
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isOfferOpen, setIsOfferOpen] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  // SWR Hooks
-  const { data: listing, error: listingError, isLoading: isListingLoading, mutate: mutateListing } = useSWR(id ? `/listings/${id}` : null, fetcher);
-  const { data: comments = [], mutate: mutateComments } = useSWR(id ? `/comments/${id}` : null, fetcher);
-  const { data: wishlistData, mutate: mutateWishlist } = useSWR(user ? '/users/me/wishlist' : null, fetcher);
-  const sellerIdForRating = listing?.sellerId?._id;
+  const { data: listing, error, isLoading, mutate: mutateListing } = useSWR<ListingDetail>(`/listings/${id}`, fetcher);
+  const { data: comments = [], mutate: mutateComments } = useSWR<Comment[]>(`/comments/${id}`, fetcher);
+
+  const sellerId = listing?.sellerId?._id;
+  const isOwner = !!user && !!sellerId && user._id === sellerId;
+
   const { data: myRating, mutate: mutateMyRating } = useSWR<number | null>(
-    user && sellerIdForRating && user._id !== sellerIdForRating ? `/ratings/${sellerIdForRating}/mine` : null,
+    user && sellerId && !isOwner ? `/ratings/${sellerId}/mine` : null,
+    fetcher
+  );
+  const { data: similar } = useSWR<{ listings: ListingSummary[] }>(
+    listing ? `/listings?category=${encodeURIComponent(listing.category)}&limit=5` : null,
     fetcher
   );
 
-  // Derived state
-  const isSaved = wishlistData?.map((item: any) => item._id || item).includes(id) || false;
-  const isLoading = isListingLoading;
-  const error = listingError ? 'Listing not found or failed to load.' : '';
-
   if (isLoading) {
     return (
-      <div className="flex flex-col min-h-screen bg-bg-base">
+      <div className="flex flex-col min-h-screen">
         <Navbar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 rounded-full border-4 border-border-subtle border-t-brand-primary animate-spin"></div>
-        </div>
+        <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-8 grid md:grid-cols-[1fr_380px] gap-8">
+          <div className="aspect-[4/3] skeleton rounded-3xl" />
+          <div className="space-y-4">
+            <div className="h-10 w-1/2 skeleton" />
+            <div className="h-6 w-3/4 skeleton" />
+            <div className="h-48 skeleton rounded-3xl" />
+          </div>
+        </main>
       </div>
     );
   }
 
   if (error || !listing) {
     return (
-      <div className="flex flex-col min-h-screen bg-bg-base">
+      <div className="flex flex-col min-h-screen">
         <Navbar />
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-          <h1 className="text-2xl font-bold mb-2">Oops!</h1>
-          <p className="text-text-muted">{error || 'Something went wrong.'}</p>
-          <Link href="/" className="mt-4 btn-primary">Go Back Home</Link>
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
+          <div className="text-5xl mb-4" aria-hidden="true">🫥</div>
+          <h1 className="text-2xl font-bold mb-2">This listing is gone</h1>
+          <p className="text-text-secondary mb-6">It may have been sold or removed by the seller.</p>
+          <Link href="/" className="btn-primary">Browse other items</Link>
         </div>
       </div>
     );
   }
 
-  const postedAt = new Date(listing.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  const sellerObjectId: string | undefined = listing.sellerId?._id || (typeof listing.sellerId === 'string' ? listing.sellerId : undefined);
-  const isOwner = !!user && user._id === sellerObjectId;
+  const seller = listing.sellerId;
+  const sellerName = seller?.name || listing.sellerName;
+  const contactPhone = listing.sellerPhone || seller?.phone || '';
   const isSold = listing.status === 'SOLD';
-  const isUnavailable = isSold || listing.status === 'DELETED' || listing.isExpired;
-  const contactPhone: string = listing.sellerPhone || listing.sellerId?.phone || '';
+  const isReserved = listing.status === 'RESERVED';
+  const isUnavailable = isSold || listing.status === 'DELETED' || !!listing.isExpired;
+  const discount = discountPercent(listing.price, listing.originalPrice);
+  const leaving = leavingLabel(seller?.leavingDate);
+  const saved = isSaved(listing._id);
+  const overlay = isSold ? 'SOLD' : listing.status === 'DELETED' ? 'REMOVED' : listing.isExpired ? 'EXPIRED' : isReserved ? 'RESERVED' : null;
+  const similarItems = (similar?.listings || []).filter((l) => l._id !== listing._id).slice(0, 4);
 
-  const generateWhatsAppLink = () => {
-    let sellerPhone = contactPhone;
-    if (sellerPhone) {
-      sellerPhone = sellerPhone.replace(/\D/g, '');
-      if (sellerPhone.length === 10) {
-        sellerPhone = `91${sellerPhone}`;
-      }
-    }
-    const sellerName = listing.sellerId?.name || listing.sellerName;
-    const text = `Hi ${sellerName}, I'm interested in the "${listing.title}" you listed on CampusMart for ₹${listing.price}. Is it still available?`;
-    return `https://wa.me/${sellerPhone}?text=${encodeURIComponent(text)}`;
-  };
+  const chatLink = whatsAppLink(
+    contactPhone,
+    `Hi ${sellerName}! Is your "${listing.title}" (${formatPrice(listing.price)}) on CampusMart still available?`
+  );
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
-
     try {
       setIsSubmittingComment(true);
-      const { data } = await api.post(`/comments/${id}`, { text: newComment });
-      mutateComments([...comments, data.data], false); // Optimistic UI
+      const { data } = await api.post(`/comments/${id}`, { text: newComment.trim() });
+      mutateComments([...comments, data.data], false);
       setNewComment('');
     } catch (err) {
-      console.error('Failed to add comment', err);
-      toast.error('Failed to post comment. Please try again.');
+      toast.error(getErrorMessage(err, 'Failed to post. Please try again.'));
     } finally {
       setIsSubmittingComment(false);
     }
   };
 
   const handleDeleteComment = async (commentId: string) => {
-    if (!confirm('Are you sure you want to delete this comment?')) return;
-
-    // Optimistic UI
-    mutateComments(comments.filter((c: any) => c._id !== commentId), false);
-
+    if (!(await confirm({ title: 'Delete this comment?', confirmLabel: 'Delete', danger: true }))) return;
+    mutateComments(comments.filter((c) => c._id !== commentId), false);
     try {
       await api.delete(`/comments/${commentId}`);
       toast.success('Comment deleted');
-      mutateComments(); // Revalidate
     } catch (err) {
-      console.error('Failed to delete comment', err);
-      toast.error('Failed to delete comment.');
-      mutateComments(); // Revert
+      toast.error(getErrorMessage(err, 'Failed to delete comment.'));
+    } finally {
+      mutateComments();
     }
   };
 
   const handleRateSeller = async (rating: number) => {
-    if (!user) {
-      toast.error('You must be logged in to rate sellers.');
-      return;
-    }
     try {
-      const res = await api.post('/ratings', { sellerId: sellerObjectId, rating });
-      toast.success(myRating ? 'Rating updated' : 'Thanks for rating this seller!');
+      const res = await api.post('/ratings', { sellerId, rating });
+      toast.success(myRating ? 'Rating updated' : 'Thanks for rating!');
       mutateMyRating(rating, false);
-
-      // Update listing state optimistically
-      mutateListing({
-        ...listing,
-        sellerId: {
-          ...listing.sellerId,
-          averageRating: res.data.data.averageRating,
-          totalRatings: res.data.data.totalRatings,
-        }
-      }, false);
+      mutateListing(
+        { ...listing, sellerId: { ...seller, averageRating: res.data.data.averageRating, totalRatings: res.data.data.totalRatings } },
+        false
+      );
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to rate seller.'));
     }
   };
 
-  const handleSetStatus = async (status: 'SOLD' | 'ACTIVE') => {
+  const handleSetStatus = async (status: 'ACTIVE' | 'RESERVED' | 'SOLD') => {
+    if (status === listing.status) return;
     setIsUpdatingStatus(true);
     try {
       await api.patch(`/listings/${listing._id}/status`, { status });
       mutateListing({ ...listing, status }, false);
-      toast.success(status === 'SOLD' ? 'Marked as sold. Congrats! 🎉' : 'Listing is live again');
+      toast.success(
+        status === 'SOLD' ? 'Marked as sold. Congrats! 🎉' : status === 'RESERVED' ? 'Marked as reserved' : 'Listing is available again'
+      );
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to update listing.'));
     } finally {
@@ -155,368 +200,334 @@ export default function ListingDetails() {
     }
   };
 
-  const handleReportListing = () => {
-    if (!user) {
-      toast.error('You must be logged in to report a listing.');
-      return;
-    }
-    setIsReportOpen(true);
-  };
-
-  const handleToggleSave = async () => {
-    if (!user) {
-      toast.error('You must be logged in to save listings.');
-      return;
-    }
-
-    const wasSaved = isSaved;
-
-    // Optimistic UI update
-    mutateWishlist((prev: any[] = []) => {
-      if (wasSaved) return prev.filter((item: any) => (item._id || item) !== id);
-      return [...prev, id];
-    }, false);
-
-    try {
-      const res = await api.post(`/users/wishlist/${id}`);
-      if (res.data.data.added) {
-        toast.success('Added to Wishlist!');
-      } else {
-        toast.success('Removed from Wishlist.');
-      }
-      mutateWishlist(); // Revalidate
-    } catch (error) {
-      mutateWishlist(); // Revert
-      toast.error('Failed to update wishlist.');
-    }
-  };
-
-  const handleShare = () => {
+  const handleShare = async () => {
+    const url = window.location.href;
+    const text = `${listing.title} for ${formatPrice(listing.price)} on CampusMart`;
     if (navigator.share) {
-      navigator.share({
-        title: listing.title,
-        text: `Check out this ${listing.title} on CampusMart!`,
-        url: window.location.href,
-      }).catch(console.error);
+      navigator.share({ title: listing.title, text, url }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast.success('Link copied to clipboard!');
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied!');
     }
+  };
+
+  const requireLogin = (action: string) => {
+    toast(`Log in to ${action}`, { icon: '🔒' });
+  };
+
+  // ---------- Contact / owner actions (shared by sidebar and mobile bar) ----------
+  const contactButtons = (compact: boolean) => {
+    if (isOwner || isUnavailable) return null;
+    if (!contactPhone) {
+      return (
+        <p className="w-full text-center text-sm bg-bg-hover text-text-muted py-3 px-4 rounded-2xl">
+          No WhatsApp number yet — ask below.
+        </p>
+      );
+    }
+    return (
+      <div className={`flex gap-2 ${compact ? '' : 'flex-col'}`}>
+        <a
+          href={chatLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 inline-flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebd5a] text-white font-semibold py-3 px-4 rounded-full transition-colors shadow-sm"
+        >
+          <WhatsAppIcon /> {compact ? 'Chat' : 'Chat on WhatsApp'}
+        </a>
+        {listing.isNegotiable && listing.price > 0 && (
+          <button type="button" onClick={() => setIsOfferOpen(true)} className="btn-secondary flex-1">
+            Make offer
+          </button>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-bg-base">
+    <div className="flex flex-col min-h-screen">
       <Navbar />
 
-      <main className="flex-1 flex flex-col p-4 sm:p-8 md:p-12 max-w-6xl mx-auto w-full gap-8 md:flex-row">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-4 sm:pt-8 pb-28 md:pb-12">
+        <nav aria-label="Breadcrumb" className="text-sm text-text-muted flex items-center gap-2 mb-4 min-w-0">
+          <Link href="/" className="hover:text-text-primary shrink-0">Home</Link>
+          <span aria-hidden="true">›</span>
+          <Link href={`/?category=${encodeURIComponent(listing.category)}`} className="hover:text-text-primary shrink-0">{listing.category}</Link>
+          <span aria-hidden="true">›</span>
+          <span className="text-text-primary truncate">{listing.title}</span>
+        </nav>
 
-        {/* Left Column: Images & Description */}
-        <div className="flex-1 space-y-8">
+        <div className="grid md:grid-cols-[minmax(0,1fr)_380px] gap-8 items-start">
+          {/* ---------- Left column ---------- */}
+          <div className="space-y-6 min-w-0">
+            <ImageGallery images={listing.images} alt={listing.title} overlay={overlay} />
 
-          {/* Breadcrumbs */}
-          <nav aria-label="Breadcrumb" className="text-sm text-text-muted flex gap-2 min-w-0">
-            <Link href="/" className="hover:text-text-primary">Home</Link>
-            <span>›</span>
-            <Link href={`/?category=${encodeURIComponent(listing.category)}`} className="hover:text-text-primary">{listing.category}</Link>
-            <span>›</span>
-            <span className="text-text-primary truncate">{listing.title}</span>
-          </nav>
-
-          {/* Image Gallery */}
-          <div className="space-y-4">
-            <div className="relative aspect-video w-full bg-bg-panel rounded-xl overflow-hidden border border-border-subtle flex items-center justify-center">
-              {listing.images && listing.images.length > 0 ? (
-                <Image
-                  src={listing.images[activeImage] || listing.images[0]}
-                  alt={listing.title}
-                  fill
-                  priority
-                  sizes="(max-width: 768px) 100vw, 800px"
-                  className={`object-contain ${isUnavailable ? 'grayscale-[60%]' : ''}`}
-                />
-              ) : (
-                <span className="text-sm text-text-muted">No photos</span>
-              )}
-              {isUnavailable && (
-                <span className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-black/80 text-white text-sm font-semibold tracking-wide">
-                  {isSold ? 'SOLD' : listing.status === 'DELETED' ? 'REMOVED' : 'EXPIRED'}
-                </span>
-              )}
-            </div>
-            {listing.images && listing.images.length > 1 && (
-              <div className="flex gap-4 overflow-x-auto pb-2">
-                {listing.images.map((src: string, idx: number) => (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveImage(idx)}
-                    className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-colors ${activeImage === idx ? 'border-brand-primary' : 'border-transparent opacity-70 hover:opacity-100'}`}
-                  >
-                    <div className="relative w-full h-full">
-                      <Image
-                        src={src}
-                        alt={`Thumbnail ${idx + 1}`}
-                        fill
-                        sizes="80px"
-                        className="object-cover"
-                      />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Description Section */}
-          <div className="panel-card space-y-4">
-            <h2 className="text-xl font-semibold">Description</h2>
-            <div className="flex flex-wrap gap-4 text-sm mb-4">
-              <span className="px-3 py-1 bg-bg-base border border-border-subtle rounded-full text-text-secondary">
-                Condition: {listing.condition}
-              </span>
-              <span className="px-3 py-1 bg-bg-base border border-border-subtle rounded-full text-text-secondary">
-                Category: {listing.category}
-              </span>
-            </div>
-            <p className="text-text-secondary leading-relaxed whitespace-pre-wrap">
-              {listing.description || 'No description provided.'}
-            </p>
-          </div>
-
-          {/* Comments Section */}
-          <div className="panel-card space-y-6">
-            <h2 className="text-xl font-semibold border-b border-border-subtle pb-4">
-              Questions & Comments ({comments.length})
-            </h2>
-
-            {/* Comment List */}
-            <div className="space-y-4">
-              {comments.length === 0 ? (
-                <p className="text-sm text-text-muted text-center py-4">
-                  No questions yet. Be the first to ask!
-                </p>
-              ) : (
-                comments.map((comment: any) => (
-                  <div key={comment._id} className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-brand-primary text-[var(--text-on-brand)] flex items-center justify-center font-bold text-sm flex-shrink-0">
-                      {comment.userName.charAt(0)}
-                    </div>
-                    <div className="flex-1 bg-bg-base border border-border-subtle rounded-2xl rounded-tl-none px-4 py-3">
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-semibold text-sm">{comment.userName}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-text-muted">
-                            {new Date(comment.createdAt).toLocaleDateString()}
-                          </span>
-                          {user && (user._id === comment.userId || isOwner) && (
-                            <button
-                              onClick={() => handleDeleteComment(comment._id)}
-                              className="text-xs text-red-500 hover:underline"
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-sm text-text-secondary whitespace-pre-wrap">
-                        {comment.text}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
+            {/* Title block (mobile shows it here, desktop in the sidebar) */}
+            <div className="md:hidden space-y-2">
+              <PriceBlock listing={listing} discount={discount} />
+              <h1 className="text-2xl font-extrabold leading-tight">{listing.title}</h1>
+              <MetaChips listing={listing} leaving={leaving} />
             </div>
 
-            {/* Add Comment Form */}
-            {user ? (
-              <form onSubmit={handleAddComment} className="flex gap-3 pt-4 border-t border-border-subtle">
-                <div className="w-8 h-8 rounded-full bg-brand-primary text-[var(--text-on-brand)] flex items-center justify-center font-bold text-sm flex-shrink-0">
-                  {user.name.charAt(0)}
+            <section className="panel-card space-y-4">
+              <h2 className="text-lg font-bold">About this item</h2>
+              <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                <div className="rounded-2xl bg-bg-base p-3">
+                  <dt className="text-text-muted text-xs">Condition</dt>
+                  <dd className="font-semibold">{listing.condition}</dd>
                 </div>
-                <div className="flex-1 flex gap-2">
+                <div className="rounded-2xl bg-bg-base p-3">
+                  <dt className="text-text-muted text-xs">Category</dt>
+                  <dd className="font-semibold">{listing.category}</dd>
+                </div>
+                <div className="rounded-2xl bg-bg-base p-3 col-span-2 sm:col-span-1">
+                  <dt className="text-text-muted text-xs">Meet at</dt>
+                  <dd className="font-semibold truncate">{listing.meetAddress || 'Ask the seller'}</dd>
+                </div>
+              </dl>
+              <p className="text-text-secondary leading-relaxed whitespace-pre-wrap">
+                {listing.description || 'No description provided — ask the seller below.'}
+              </p>
+            </section>
+
+            {/* Questions */}
+            <section className="panel-card space-y-5">
+              <h2 className="text-lg font-bold">Questions ({comments.length})</h2>
+
+              {comments.length === 0 ? (
+                <p className="text-sm text-text-muted">No questions yet. Ask about size, age, or whether the price is flexible.</p>
+              ) : (
+                <ul className="space-y-4">
+                  {comments.map((comment) => (
+                    <li key={comment._id} className="flex gap-3">
+                      <Avatar name={comment.userName} src={comment.userProfileImage} size={32} />
+                      <div className="flex-1 min-w-0 rounded-2xl rounded-tl-sm bg-bg-base px-4 py-3">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="font-semibold text-sm truncate">
+                            {comment.userName}
+                            {comment.userId === sellerId && <span className="ml-2 badge bg-brand-soft text-brand-primary">Seller</span>}
+                          </span>
+                          <span className="flex items-center gap-2 shrink-0 text-xs text-text-muted">
+                            {timeAgo(comment.createdAt)}
+                            {user && (user._id === comment.userId || isOwner) && (
+                              <button onClick={() => handleDeleteComment(comment._id)} className="text-danger hover:underline">
+                                Delete
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                        <p className="text-sm text-text-secondary whitespace-pre-wrap break-words">{comment.text}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {user ? (
+                <form onSubmit={handleAddComment} className="flex gap-2 pt-4 border-t border-border-subtle">
                   <input
                     type="text"
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Ask a question about this item..."
-                    className="w-full text-sm"
+                    placeholder={isOwner ? 'Reply to buyers...' : 'Ask a question...'}
+                    className="flex-1 min-w-0 text-sm"
                     maxLength={1000}
                     disabled={isSubmittingComment}
+                    aria-label="Your question"
                   />
-                  <button
-                    type="submit"
-                    disabled={!newComment.trim() || isSubmittingComment}
-                    className="btn-primary text-sm px-4 whitespace-nowrap"
-                  >
-                    {isSubmittingComment ? 'Posting...' : 'Post'}
+                  <button type="submit" disabled={!newComment.trim() || isSubmittingComment} className="btn-primary text-sm px-5">
+                    {isSubmittingComment ? '...' : 'Post'}
                   </button>
-                </div>
-              </form>
-            ) : (
-              <div className="pt-4 border-t border-border-subtle text-center">
-                <p className="text-sm text-text-muted mb-2">You must be logged in to ask a question.</p>
-                <Link href="/login" className="btn-secondary text-sm inline-block">
-                  Log in to Comment
+                </form>
+              ) : (
+                <Link href={`/login?redirect=/listing/${id}`} className="btn-secondary w-full text-sm">
+                  Log in to ask a question
                 </Link>
-              </div>
-            )}
+              )}
+            </section>
           </div>
-        </div>
 
-        {/* Right Column: Sticky Info Panel */}
-        <div className="w-full md:w-80 lg:w-96 flex-shrink-0">
-          <div className="sticky top-20 space-y-6">
-
-            {/* Price & Title Card */}
-            <div className="panel-card space-y-4">
-              <div className="flex justify-between items-start gap-4">
-                <h1 className="text-2xl font-bold leading-tight">{listing.title}</h1>
+          {/* ---------- Right column ---------- */}
+          <aside className="space-y-5 md:sticky md:top-24">
+            <div className="panel-card space-y-5">
+              <div className="hidden md:block space-y-2">
+                <PriceBlock listing={listing} discount={discount} />
+                <h1 className="text-2xl font-extrabold leading-tight">{listing.title}</h1>
+                <MetaChips listing={listing} leaving={leaving} />
               </div>
 
-              <div className="flex items-end gap-3 pt-2">
-                <span className="text-3xl font-bold text-brand-primary">₹{listing.price.toLocaleString('en-IN')}</span>
-                {listing.isNegotiable && (
-                  <span className="text-sm text-text-muted mb-1 pb-1 border-b border-border-subtle border-dashed">
-                    Negotiable
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-text-muted text-right">Posted {postedAt}</p>
-            </div>
+              {isUnavailable && !isOwner && (
+                <p className="text-center font-semibold rounded-2xl bg-bg-hover py-3">
+                  {isSold ? 'This item has been sold' : 'This listing is no longer available'}
+                </p>
+              )}
+              {isReserved && !isOwner && (
+                <p className="text-sm rounded-2xl bg-warning-soft text-warning px-4 py-3">
+                  Someone has reserved this. You can still message the seller in case it falls through.
+                </p>
+              )}
 
-            {/* Seller & Action Card */}
-            <div className="panel-card space-y-6">
-              <h3 className="text-lg font-semibold">Seller Info</h3>
-
-              <div className="flex items-center gap-4">
-                {listing.sellerId?.profileImage ? (
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden border border-border-subtle flex-shrink-0">
-                    <Image src={listing.sellerId.profileImage} alt="" fill sizes="48px" className="object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-12 h-12 bg-brand-primary text-[var(--text-on-brand)] font-bold text-xl rounded-full flex items-center justify-center flex-shrink-0">
-                    {(listing.sellerId?.name || listing.sellerName).charAt(0)}
-                  </div>
-                )}
-                <div>
-                  <Link href={sellerObjectId ? `/seller/${sellerObjectId}` : '#'} className="font-semibold text-text-primary hover:underline hover:text-brand-primary">
-                    {listing.sellerId?.name || listing.sellerName}
-                  </Link>
-                  <p className="text-sm text-text-secondary">
-                    ⭐ {(listing.sellerId?.averageRating || 0).toFixed(1)} ({listing.sellerId?.totalRatings || 0} {listing.sellerId?.totalRatings === 1 ? 'rating' : 'ratings'})
-                    {listing.sellerId?.totalItemsSold ? ` · ${listing.sellerId.totalItemsSold} sold` : ''}
-                  </p>
+              {isOwner ? (
+                <div className="space-y-3">
+                  {listing.status !== 'DELETED' && (
+                    <div className="grid grid-cols-3 gap-1 p-1 rounded-full bg-bg-base border border-border-subtle" role="radiogroup" aria-label="Listing status">
+                      {(['ACTIVE', 'RESERVED', 'SOLD'] as const).map((s) => (
+                        <button
+                          key={s}
+                          role="radio"
+                          aria-checked={listing.status === s}
+                          disabled={isUpdatingStatus}
+                          onClick={() => handleSetStatus(s)}
+                          className={`py-2 rounded-full text-xs font-semibold transition-colors ${
+                            listing.status === s ? 'bg-bg-panel shadow text-text-primary' : 'text-text-muted hover:text-text-primary'
+                          }`}
+                        >
+                          {s === 'ACTIVE' ? 'Available' : s === 'RESERVED' ? 'Reserved' : 'Sold'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <Link href={`/listing/${listing._id}/edit`} className="btn-primary w-full">Edit listing</Link>
+                  <button onClick={handleShare} className="btn-secondary w-full">Share with your groups</button>
                 </div>
-              </div>
-
-              {user && !isOwner && (
-                <div className="pt-2 pl-[64px] flex items-center gap-1">
-                  <span className="text-xs text-text-muted mr-1">{myRating ? 'Your rating:' : 'Rate seller:'}</span>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      onClick={() => handleRateSeller(star)}
-                      aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
-                      className={`text-lg transition-colors hover:text-yellow-400 ${myRating && star <= myRating ? 'text-yellow-400' : 'text-text-muted'}`}
-                    >
-                      ★
-                    </button>
-                  ))}
+              ) : (
+                <div className="hidden md:block space-y-3">
+                  {contactButtons(false)}
                 </div>
               )}
 
-              <div className="space-y-1 border-t border-border-subtle pt-4">
-                <p className="text-xs text-text-muted uppercase font-semibold tracking-wider">Meet Address</p>
-                <p className="text-sm text-text-primary font-medium">{listing.meetAddress || 'Ask the seller'}</p>
-              </div>
-
-              <div className="pt-2 flex flex-col gap-3">
-                {isOwner ? (
-                  <>
-                    <Link
-                      href={`/listing/${listing._id}/edit`}
-                      className="w-full flex items-center justify-center gap-2 btn-primary rounded-xl"
-                    >
-                      Edit listing
-                    </Link>
-                    {listing.status !== 'DELETED' && (
-                      <button
-                        onClick={() => handleSetStatus(isSold ? 'ACTIVE' : 'SOLD')}
-                        disabled={isUpdatingStatus}
-                        className="w-full flex items-center justify-center gap-2 bg-bg-base hover:bg-bg-hover text-text-primary font-semibold py-3 px-4 rounded-xl transition-colors border border-border-subtle disabled:opacity-60"
-                      >
-                        {isSold ? 'Mark as available' : 'Mark as sold'}
-                      </button>
-                    )}
-                  </>
-                ) : isUnavailable ? (
-                  <div className="w-full text-center bg-bg-hover text-text-secondary font-semibold py-3 px-4 rounded-xl border border-border-subtle">
-                    {isSold ? 'This item has been sold' : 'This listing is no longer available'}
-                  </div>
-                ) : contactPhone ? (
-                  <a
-                    href={generateWhatsAppLink()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebd5a] text-white font-semibold py-3 px-4 rounded-xl transition-colors shadow-sm"
+              {!isOwner && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => (user ? toggleSave(listing._id) : requireLogin('save items'))}
+                    aria-pressed={saved}
+                    className={`btn-secondary flex-1 text-sm ${saved ? '!text-red-500 !border-red-300' : ''}`}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
-                      <path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.729.729 0 0 0-.529.247c-.182.198-.691.677-.691 1.654 0 .977.71 1.916.81 2.049.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z"/>
-                    </svg>
-                    Chat on WhatsApp
-                  </a>
-                ) : (
-                  <p className="w-full text-center text-sm bg-bg-hover text-text-muted py-3 px-4 rounded-xl border border-border-subtle">
-                    The seller hasn&apos;t added a WhatsApp number yet. Ask a question below.
+                    {saved ? '♥ Saved' : '♡ Save'}
+                  </button>
+                  <button onClick={handleShare} className="btn-secondary flex-1 text-sm">Share</button>
+                </div>
+              )}
+            </div>
+
+            {/* Seller card */}
+            <div className="panel-card space-y-4">
+              <Link href={`/seller/${sellerId}`} className="flex items-center gap-3 group">
+                <Avatar name={sellerName} src={seller?.profileImage} size={48} />
+                <div className="min-w-0">
+                  <p className="font-semibold group-hover:underline flex items-center gap-1">
+                    <span className="truncate">{sellerName}</span>
+                    {seller?.isVerified && <span className="badge bg-brand-soft text-brand-primary shrink-0">Verified</span>}
                   </p>
-                )}
+                  <p className="text-sm text-text-muted">
+                    ⭐ {(seller?.averageRating || 0).toFixed(1)} ({seller?.totalRatings || 0})
+                    {seller?.totalItemsSold ? ` · ${seller.totalItemsSold} sold` : ''}
+                  </p>
+                </div>
+                <span className="ml-auto text-text-muted" aria-hidden="true">›</span>
+              </Link>
 
-                <button
-                  onClick={handleShare}
-                  className="w-full flex items-center justify-center gap-2 bg-bg-base hover:bg-bg-hover text-text-primary font-semibold py-3 px-4 rounded-xl transition-colors border border-border-subtle shadow-sm"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                  </svg>
-                  Share Listing
-                </button>
+              {user && !isOwner && (
+                <div className="flex items-center gap-2 pt-3 border-t border-border-subtle">
+                  <span className="text-xs text-text-muted">{myRating ? 'Your rating' : 'Bought from them? Rate'}</span>
+                  <div className="flex">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => handleRateSeller(star)}
+                        aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                        className={`text-xl px-0.5 transition-colors hover:text-yellow-400 ${myRating && star <= myRating ? 'text-yellow-400' : 'text-border-subtle'}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
+            <div className="rounded-3xl border border-border-subtle p-5 text-sm text-text-secondary space-y-2">
+              <p className="font-semibold text-text-primary">🛡️ Stay safe</p>
+              <p>Meet in a public spot on campus, check the item before paying, and never pay in advance.</p>
+              <div className="flex justify-between items-center pt-1">
+                <Link href="/safety" className="underline hover:text-text-primary">More tips</Link>
                 {!isOwner && (
                   <button
-                    onClick={handleToggleSave}
-                    className={`w-full flex items-center justify-center gap-2 font-semibold py-3 px-4 rounded-xl transition-colors border shadow-sm ${
-                      isSaved
-                        ? 'bg-red-50 text-red-500 border-red-200 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50'
-                        : 'bg-bg-base hover:bg-bg-hover text-text-primary border-border-subtle'
-                    }`}
+                    onClick={() => (user ? setIsReportOpen(true) : requireLogin('report listings'))}
+                    className="text-text-muted hover:text-danger"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill={isSaved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={isSaved ? 0 : 2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
-                    {isSaved ? 'Saved to Wishlist' : 'Save for Later'}
+                    Report listing
                   </button>
                 )}
               </div>
             </div>
-
-            {/* Subtle Report Button */}
-            {!isOwner && (
-            <div className="flex justify-center pt-2">
-              <button
-                onClick={handleReportListing}
-                className="text-xs text-text-muted hover:text-red-500 transition-colors flex items-center gap-1"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-                </svg>
-                Report this listing
-              </button>
-            </div>
-            )}
-
-          </div>
+          </aside>
         </div>
+
+        {similarItems.length > 0 && (
+          <section className="mt-14">
+            <h2 className="text-xl font-extrabold mb-5">More in {listing.category}</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+              {similarItems.map((item) => (
+                <ListingCard key={item._id} listing={item} />
+              ))}
+            </div>
+          </section>
+        )}
       </main>
+
+      {/* Sticky contact bar on phones (sits above the bottom nav) */}
+      {!isOwner && !isUnavailable && (
+        <div
+          className="md:hidden fixed inset-x-0 z-30 border-t border-border-subtle bg-bg-panel/95 backdrop-blur-xl px-4 py-3 flex items-center gap-3"
+          style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom))' }}
+        >
+          <div className="shrink-0">
+            <p className={`text-lg font-extrabold leading-none ${listing.price <= 0 ? 'text-success' : ''}`}>{formatPrice(listing.price)}</p>
+            {listing.isNegotiable && <p className="text-[11px] text-text-muted">Negotiable</p>}
+          </div>
+          <div className="flex-1">{contactButtons(true)}</div>
+        </div>
+      )}
+
       <ReportDialog listingId={listing._id} open={isReportOpen} onClose={() => setIsReportOpen(false)} />
+      {contactPhone && (
+        <OfferDialog
+          open={isOfferOpen}
+          onClose={() => setIsOfferOpen(false)}
+          phone={contactPhone}
+          sellerName={sellerName}
+          title={listing.title}
+          price={listing.price}
+        />
+      )}
+    </div>
+  );
+}
+
+function PriceBlock({ listing, discount }: { listing: ListingDetail; discount: number | null }) {
+  const isFree = listing.price <= 0;
+  return (
+    <div className="flex items-baseline gap-3 flex-wrap">
+      <span className={`text-3xl font-extrabold font-[family-name:var(--font-display)] ${isFree ? 'text-success' : 'text-text-primary'}`}>
+        {formatPrice(listing.price)}
+      </span>
+      {discount && listing.originalPrice && !isFree && (
+        <>
+          <span className="text-text-muted line-through">₹{listing.originalPrice.toLocaleString('en-IN')}</span>
+          <span className="badge bg-success-soft text-success">{discount}% off</span>
+        </>
+      )}
+      {listing.isNegotiable && !isFree && <span className="chip">Negotiable</span>}
+    </div>
+  );
+}
+
+function MetaChips({ listing, leaving }: { listing: ListingDetail; leaving: string | null }) {
+  return (
+    <div className="flex flex-wrap gap-2 text-xs text-text-muted">
+      <span>Posted {timeAgo(listing.createdAt)}</span>
+      {leaving && <span className="badge bg-warning-soft text-warning normal-case tracking-normal">⏳ Seller {leaving.toLowerCase()}</span>}
     </div>
   );
 }

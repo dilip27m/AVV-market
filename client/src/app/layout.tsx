@@ -1,44 +1,63 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { Footer } from "@/components/Footer";
-import { Providers } from "./providers";
+import type { Metadata, Viewport } from 'next';
+import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
+import './globals.css';
+import { Footer } from '@/components/Footer';
+import { BottomNav } from '@/components/BottomNav';
+import { Providers } from './providers';
 import { Toaster } from 'react-hot-toast';
+import { APP_NAME, APP_DESCRIPTION, APP_TAGLINE, SITE_URL } from '@/lib/brand';
 
 const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
+  subsets: ['latin'],
+  variable: '--font-inter',
+});
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-jakarta',
+  weight: ['600', '700', '800'],
 });
 
 export const metadata: Metadata = {
-  title: "CampusMart | College Marketplace",
-  description: "A private marketplace for your campus. Buy, sell, and report lost items.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${APP_NAME} | ${APP_TAGLINE}`,
+    template: `%s | ${APP_NAME}`,
+  },
+  description: APP_DESCRIPTION,
   openGraph: {
-    title: "CampusMart | College Marketplace",
-    description: "A private marketplace for your campus. Buy, sell, and report lost items.",
-    url: "https://campusmart.vercel.app", // Adjust domain later
-    siteName: "CampusMart",
-    locale: "en_IN",
-    type: "website",
+    title: `${APP_NAME} | ${APP_TAGLINE}`,
+    description: APP_DESCRIPTION,
+    url: '/',
+    siteName: APP_NAME,
+    locale: 'en_IN',
+    type: 'website',
   },
   twitter: {
-    card: "summary_large_image",
-    title: "CampusMart | College Marketplace",
-    description: "A private marketplace for your campus. Buy, sell, and report lost items.",
+    card: 'summary_large_image',
+    title: `${APP_NAME} | ${APP_TAGLINE}`,
+    description: APP_DESCRIPTION,
   },
-  manifest: "/manifest.json",
+  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "CampusMart",
+    statusBarStyle: 'default',
+    title: APP_NAME,
   },
 };
 
-export const viewport = {
-  themeColor: "#4F46E5",
-  width: "device-width",
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f6f6fa' },
+    { media: '(prefers-color-scheme: dark)', color: '#0b0b12' },
+  ],
+  width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
 };
+
+// Runs before first paint: use the saved theme, else the system setting.
+const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
 
 export default function RootLayout({
   children,
@@ -46,27 +65,31 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="h-full flex flex-col bg-bg-base text-text-primary">
+    <html lang="en" data-theme="light" suppressHydrationWarning className={`${inter.variable} ${jakarta.variable} h-full antialiased`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="min-h-full flex flex-col bg-bg-base text-text-primary pb-safe-nav">
         <Providers>
-          <Toaster 
-            position="bottom-center"
+          <Toaster
+            position="top-center"
             toastOptions={{
               style: {
-                background: '#1a1a1a', // Charcoal black
-                color: '#ffffff',
-                border: '1px solid #333333',
-                borderRadius: '8px',
+                background: 'var(--bg-panel)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '14px',
                 padding: '12px 16px',
                 fontSize: '14px',
+                boxShadow: 'var(--shadow-card-hover)',
               },
             }}
           />
           <div className="flex-1 flex flex-col">{children}</div>
           <Footer />
+          <BottomNav />
         </Providers>
       </body>
     </html>
   );
 }
-

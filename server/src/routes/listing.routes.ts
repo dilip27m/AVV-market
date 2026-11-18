@@ -7,6 +7,7 @@ import {
   updateListingStatus,
   deleteListing,
   getMyListings,
+  getMarketplaceStats,
   renewListing,
   adminDeleteListing,
 } from '../controllers/listing.controller';
@@ -21,6 +22,7 @@ router.get('/search', getListings); // Same handler, search via query params
 
 // Protected — "my" route MUST come before "/:id" to avoid matching "my" as an ID
 router.get('/my', authMiddleware, getMyListings);
+router.get('/stats', getMarketplaceStats);
 
 // Public
 router.get('/:id', optionalAuth, getListingById);

@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import imageCompression from 'browser-image-compression';
 import { api, getErrorMessage } from '@/lib/api';
-import { LISTING_CATEGORIES, ITEM_CONDITIONS } from '@/lib/constants';
+import { LISTING_CATEGORIES, ITEM_CONDITIONS, CAMPUS_SPOTS, CATEGORY_ICONS } from '@/lib/constants';
+import { discountPercent } from '@/lib/format';
 import { useAuth } from '@/context/AuthContext';
 
 const MAX_IMAGES = 4;
@@ -19,6 +20,7 @@ export interface ExistingListing {
   category: string;
   condition: string;
   price: number;
+  originalPrice?: number | null;
   isNegotiable: boolean;
   meetAddress: string;
   images: string[];
@@ -29,20 +31,26 @@ interface ListingFormProps {
   listing?: ExistingListing;
 }
 
-type NewImage = { file: File; preview: string };
+/** One photo in the form: either already uploaded (url) or picked just now (file). */
+type Photo =
+  | { kind: 'existing'; key: string; src: string }
+  | { kind: 'new'; key: string; src: string; file: File };
 
 export function ListingForm({ listing }: ListingFormProps) {
   const router = useRouter();
   const { user, refreshUser } = useAuth();
   const isEdit = !!listing;
 
-  const [existingImages, setExistingImages] = useState<string[]>(listing?.images || []);
-  const [newImages, setNewImages] = useState<NewImage[]>([]);
+  // A single ordered list — the first photo is the cover shown on cards
+  const [photos, setPhotos] = useState<Photo[]>(
+    () => (listing?.images || []).map((src) => ({ kind: 'existing' as const, key: src, src }))
+  );
   const [title, setTitle] = useState(listing?.title || '');
   const [description, setDescription] = useState(listing?.description || '');
   const [category, setCategory] = useState(listing?.category || '');
   const [condition, setCondition] = useState(listing?.condition || 'Used - Good');
   const [price, setPrice] = useState(listing ? String(listing.price) : '');
+  const [originalPrice, setOriginalPrice] = useState(listing?.originalPrice ? String(listing.originalPrice) : '');
   const [isNegotiable, setIsNegotiable] = useState(listing?.isNegotiable || false);
   const [sellerPhone, setSellerPhone] = useState(user?.phone || '');
   const [meetAddress, setMeetAddress] = useState(listing?.meetAddress || user?.meetAddress || '');
@@ -54,13 +62,14 @@ export function ListingForm({ listing }: ListingFormProps) {
   // (RequireAuth guarantees `user` is loaded before this form mounts,
   // so the profile defaults above are already filled in.)
 
-  // Free object URLs when previews go away
+  // Free preview object URLs when the form unmounts
+  const photosRef = useRef(photos);
   useEffect(() => {
-    return () => newImages.forEach((img) => URL.revokeObjectURL(img.preview));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    photosRef.current = photos;
+  }, [photos]);
+  useEffect(() => () => photosRef.current.forEach((p) => p.kind === 'new' && URL.revokeObjectURL(p.src)), []);
 
-  const totalImages = existingImages.length + newImages.length;
+  const totalImages = photos.length;
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -81,9 +90,12 @@ export function ListingForm({ listing }: ListingFormProps) {
           imageCompression(file, { maxSizeMB: 0.3, maxWidthOrHeight: 1280, useWebWorker: true })
         )
       );
-      setNewImages((prev) => [
+      setPhotos((prev) => [
         ...prev,
-        ...compressed.map((file) => ({ file, preview: URL.createObjectURL(file) })),
+        ...compressed.map((file) => {
+          const src = URL.createObjectURL(file);
+          return { kind: 'new' as const, key: src, src, file };
+        }),
       ]);
     } catch {
       toast.error('Could not process that image. Try a different photo.');
@@ -92,10 +104,18 @@ export function ListingForm({ listing }: ListingFormProps) {
     }
   };
 
-  const removeNewImage = (index: number) => {
-    setNewImages((prev) => {
-      URL.revokeObjectURL(prev[index].preview);
-      return prev.filter((_, i) => i !== index);
+  const removePhoto = (key: string) => {
+    setPhotos((prev) => {
+      const photo = prev.find((p) => p.key === key);
+      if (photo?.kind === 'new') URL.revokeObjectURL(photo.src);
+      return prev.filter((p) => p.key !== key);
+    });
+  };
+
+  const makeCover = (key: string) => {
+    setPhotos((prev) => {
+      const photo = prev.find((p) => p.key === key);
+      return photo ? [photo, ...prev.filter((p) => p.key !== key)] : prev;
     });
   };
 
@@ -121,11 +141,21 @@ export function ListingForm({ listing }: ListingFormProps) {
       formData.append('category', category);
       formData.append('condition', condition);
       formData.append('price', price);
+      formData.append('originalPrice', originalPrice);
       formData.append('isNegotiable', String(isNegotiable));
       formData.append('meetAddress', meetAddress.trim());
       if (!isEdit) formData.append('sellerPhone', phoneDigits);
-      if (isEdit) formData.append('existingImages', JSON.stringify(existingImages));
-      newImages.forEach((img) => formData.append('images', img.file));
+      // New files are uploaded in this order; `imageOrder` tells the server how to
+      // interleave them with the photos it already has ("new:0" = first new file).
+      const newPhotos = photos.filter((p): p is Extract<Photo, { kind: 'new' }> => p.kind === 'new');
+      newPhotos.forEach((p) => formData.append('images', p.file));
+      if (isEdit) {
+        formData.append('existingImages', JSON.stringify(photos.filter((p) => p.kind === 'existing').map((p) => p.src)));
+        formData.append(
+          'imageOrder',
+          JSON.stringify(photos.map((p) => (p.kind === 'existing' ? p.src : `new:${newPhotos.indexOf(p)}`)))
+        );
+      }
 
       const { data } = isEdit
         ? await api.put(`/listings/${listing!._id}`, formData)
@@ -154,37 +184,45 @@ export function ListingForm({ listing }: ListingFormProps) {
           <div>
             <h2 className="text-lg font-semibold text-text-primary">Photos</h2>
             <p className="text-sm text-text-muted">
-              Up to {MAX_IMAGES} photos. The first one is the cover. Clear photos sell faster.
+              Up to {MAX_IMAGES} photos. Tap “Make cover” to choose the photo buyers see first.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-4 mt-2">
-            {existingImages.map((src) => (
-              <div key={src} className="relative w-24 h-24 rounded-lg overflow-hidden border border-border-subtle bg-bg-base">
-                <Image src={src} alt="Listing photo" fill sizes="96px" className="object-cover" />
+            {photos.map((photo, idx) => (
+              <div
+                key={photo.key}
+                className={`relative w-24 h-24 rounded-xl overflow-hidden bg-bg-base border-2 ${
+                  idx === 0 ? 'border-brand-primary' : 'border-border-subtle'
+                }`}
+              >
+                {photo.kind === 'existing' ? (
+                  <Image src={photo.src} alt={`Photo ${idx + 1}`} fill sizes="96px" className="object-cover" />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={photo.src} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                )}
                 <button
                   type="button"
-                  aria-label="Remove photo"
-                  onClick={() => setExistingImages((prev) => prev.filter((s) => s !== src))}
+                  aria-label={`Remove photo ${idx + 1}`}
+                  onClick={() => removePhoto(photo.key)}
                   className="absolute top-1 right-1 bg-black/60 hover:bg-black text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
                 >
                   ×
                 </button>
-              </div>
-            ))}
-
-            {newImages.map((img, idx) => (
-              <div key={img.preview} className="relative w-24 h-24 rounded-lg overflow-hidden border border-border-subtle bg-bg-base">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img.preview} alt="New photo preview" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  aria-label="Remove photo"
-                  onClick={() => removeNewImage(idx)}
-                  className="absolute top-1 right-1 bg-black/60 hover:bg-black text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
-                >
-                  ×
-                </button>
+                {idx === 0 ? (
+                  <span className="absolute bottom-0 inset-x-0 bg-brand-primary text-[10px] font-bold text-center py-0.5" style={{ color: 'var(--text-on-brand)' }}>
+                    COVER
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => makeCover(photo.key)}
+                    className="absolute bottom-0 inset-x-0 bg-black/60 hover:bg-black/80 text-white text-[10px] font-semibold py-0.5"
+                  >
+                    Make cover
+                  </button>
+                )}
               </div>
             ))}
 
@@ -251,7 +289,7 @@ export function ListingForm({ listing }: ListingFormProps) {
               <select id="category" className="w-full" value={category} onChange={(e) => setCategory(e.target.value)} required>
                 <option value="" disabled>Select category...</option>
                 {LISTING_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
+                  <option key={cat} value={cat}>{CATEGORY_ICONS[cat]} {cat}</option>
                 ))}
               </select>
             </div>
@@ -268,7 +306,12 @@ export function ListingForm({ listing }: ListingFormProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="space-y-2">
-              <label htmlFor="price" className="text-sm font-medium text-text-primary">Price (₹)</label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="price" className="text-sm font-medium text-text-primary">Your price (₹)</label>
+                <button type="button" onClick={() => setPrice('0')} className="text-xs text-success font-semibold hover:underline">
+                  🎁 Give it away free
+                </button>
+              </div>
               <input
                 id="price"
                 type="number"
@@ -276,7 +319,7 @@ export function ListingForm({ listing }: ListingFormProps) {
                 min="0"
                 max="1000000"
                 step="1"
-                placeholder="e.g., 500 (0 = free)"
+                placeholder="e.g., 500"
                 className="w-full"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
@@ -284,7 +327,30 @@ export function ListingForm({ listing }: ListingFormProps) {
               />
             </div>
 
-            <div className="flex items-center space-x-3 sm:pt-8">
+            <div className="space-y-2">
+              <label htmlFor="originalPrice" className="text-sm font-medium text-text-primary">
+                Price when new (₹) <span className="text-text-muted font-normal">(optional)</span>
+              </label>
+              <input
+                id="originalPrice"
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                placeholder="e.g., 1200"
+                className="w-full"
+                value={originalPrice}
+                onChange={(e) => setOriginalPrice(e.target.value)}
+              />
+              <p className="text-xs text-text-muted">
+                {(() => {
+                  const pct = discountPercent(Number(price), Number(originalPrice));
+                  return pct ? `Buyers will see “${pct}% off” — great for selling fast.` : 'Shows buyers how much they save.';
+                })()}
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-3 sm:col-span-2">
               <input
                 type="checkbox"
                 id="negotiable"
@@ -344,9 +410,15 @@ export function ListingForm({ listing }: ListingFormProps) {
                 value={meetAddress}
                 onChange={(e) => setMeetAddress(e.target.value)}
                 maxLength={200}
+                list="campus-spots"
                 required
               />
-              <p className="text-xs text-text-muted">Where should the buyer meet you?</p>
+              <datalist id="campus-spots">
+                {CAMPUS_SPOTS.map((spot) => (
+                  <option key={spot} value={spot} />
+                ))}
+              </datalist>
+              <p className="text-xs text-text-muted">Pick a public spot on campus.</p>
             </div>
           </div>
         </div>

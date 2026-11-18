@@ -1,10 +1,18 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api } from '@/lib/api';
+import { api, getErrorMessage } from '@/lib/api';
 import { getAccessToken, setTokens, clearTokens } from '@/lib/auth-tokens';
 
-interface User {
+export interface LoginResult {
+  success: boolean;
+  isNewUser?: boolean;
+  /** True if the user hasn't added a WhatsApp number yet */
+  needsPhone?: boolean;
+  message?: string;
+}
+
+export interface User {
   _id: string;
   name: string;
   email: string;
@@ -15,12 +23,15 @@ interface User {
   totalRatings: number;
   totalItemsSold: number;
   isAdmin?: boolean;
+  isVerified?: boolean;
+  leavingDate?: string | null;
+  createdAt?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (credential: string) => Promise<boolean>;
+  login: (credential: string) => Promise<LoginResult>;
   logout: () => void;
   /** Re-fetch the current user (e.g. after editing the profile). */
   refreshUser: () => Promise<void>;
@@ -57,20 +68,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchUser();
   }, []);
 
-  const login = async (credential: string): Promise<boolean> => {
+  const login = async (credential: string): Promise<LoginResult> => {
     setIsLoading(true);
     try {
       const { data } = await api.post('/auth/google', { credential });
-      
-      const { user: userData, accessToken, refreshToken } = data.data;
-      
+      const { user: userData, accessToken, refreshToken, isNewUser } = data.data;
+
       setTokens(accessToken, refreshToken);
       setUser(userData);
-      
-      return true;
+
+      return { success: true, isNewUser: !!isNewUser, needsPhone: !userData.phone };
     } catch (error) {
       console.error('Login error:', error);
-      return false;
+      return { success: false, message: getErrorMessage(error, 'Failed to sign in. Please try again.') };
     } finally {
       setIsLoading(false);
     }

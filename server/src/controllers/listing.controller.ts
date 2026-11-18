@@ -1,10 +1,9 @@
 import { Request, Response } from 'express';
-import { Listing, LISTING_CATEGORIES, ITEM_CONDITIONS } from '../models/Listing';
+import { Listing, LISTING_CATEGORIES, ITEM_CONDITIONS, VISIBLE_STATUSES } from '../models/Listing';
 import { User } from '../models/User';
 import { Report } from '../models/Report';
-import cloudinary from '../config/cloudinary';
-import { Readable } from 'stream';
 import NodeCache from 'node-cache';
+import { uploadImages, deleteImages } from '../utils/images';
 import { isAdminUser } from '../middleware/auth.middleware';
 import { asString, isObjectId, normalizePhone } from '../utils/validate';
 
@@ -17,49 +16,35 @@ export const invalidateListingsCache = (): void => {
 };
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Put a listing's photos in the order the seller chose (first = cover).
+ * `imageOrder` is a JSON array mixing kept URLs and "new:<index>" tokens
+ * for this request's uploads. Anything unknown is ignored, and any photo
+ * the order forgot is appended, so a bad order can never lose a photo.
+ */
+const orderImages = (imageOrder: unknown, kept: string[], uploaded: string[]): string[] => {
+  const fallback = [...kept, ...uploaded];
+  if (typeof imageOrder !== 'string') return fallback;
+
+  let tokens: unknown;
+  try {
+    tokens = JSON.parse(imageOrder);
+  } catch {
+    return fallback;
+  }
+  if (!Array.isArray(tokens)) return fallback;
+
+  const ordered: string[] = [];
+  for (const token of tokens) {
+    if (typeof token !== 'string') continue;
+    const match = token.match(/^new:(\d+)$/);
+    const url = match ? uploaded[Number(match[1])] : kept.includes(token) ? token : undefined;
+    if (url && !ordered.includes(url)) ordered.push(url);
+  }
+  return [...ordered, ...fallback.filter((url) => !ordered.includes(url))];
+};
 const SORT_OPTIONS = ['newest', 'oldest', 'price_low', 'price_high'] as const;
-
-// ============================================================
-// Helper: Upload buffer to Cloudinary
-// ============================================================
-const uploadToCloudinary = (
-  buffer: Buffer,
-  folder: string
-): Promise<{ secure_url: string; public_id: string }> => {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'image',
-        transformation: [
-          { width: 800, height: 800, crop: 'limit' }, // max 800x800, maintain ratio
-          { quality: 'auto:good' },
-          { fetch_format: 'auto' },
-        ],
-      },
-      (error, result) => {
-        if (error || !result) {
-          reject(error || new Error('Upload failed'));
-        } else {
-          resolve({ secure_url: result.secure_url, public_id: result.public_id });
-        }
-      }
-    );
-
-    const readable = new Readable();
-    readable.push(buffer);
-    readable.push(null);
-    readable.pipe(uploadStream);
-  });
-};
-
-const uploadFiles = async (files: Request['files']): Promise<string[]> => {
-  if (!files || !Array.isArray(files) || files.length === 0) return [];
-  const results = await Promise.all(
-    files.map((file) => uploadToCloudinary(file.buffer, 'avv-market/listings'))
-  );
-  return results.map((r) => r.secure_url);
-};
 
 // ============================================================
 // Helper: Validate listing fields from a multipart body.
@@ -71,6 +56,7 @@ type ListingFields = {
   description?: string;
   category?: string;
   price?: number;
+  originalPrice?: number | null;
   isNegotiable?: boolean;
   condition?: string;
   meetAddress?: string;
@@ -111,6 +97,19 @@ const validateListingBody = (
     fields.price = Math.round(price);
   }
 
+  // Optional "price when new". Empty string clears it.
+  if (body.originalPrice !== undefined) {
+    if (body.originalPrice === '' || body.originalPrice === null) {
+      fields.originalPrice = null;
+    } else {
+      const originalPrice = Number(body.originalPrice);
+      if (!Number.isFinite(originalPrice) || originalPrice < 0 || originalPrice > 10_000_000) {
+        return { error: 'Enter a valid original price' };
+      }
+      fields.originalPrice = Math.round(originalPrice);
+    }
+  }
+
   if (body.isNegotiable !== undefined) {
     fields.isNegotiable = body.isNegotiable === 'true' || body.isNegotiable === true;
   }
@@ -130,6 +129,15 @@ const validateListingBody = (
     fields.meetAddress = body.meetAddress.trim();
   }
 
+  if (
+    fields.originalPrice != null &&
+    fields.price !== undefined &&
+    fields.originalPrice <= fields.price
+  ) {
+    // Not an error — it just isn't a discount, so don't show it
+    fields.originalPrice = null;
+  }
+
   return { fields };
 };
 
@@ -141,6 +149,8 @@ const validateListingBody = (
 // phone / meet address yet, we save these as their defaults.
 // ============================================================
 export const createListing = async (req: Request, res: Response): Promise<void> => {
+  // Tracked outside try so we can clean up uploads if saving fails
+  let imageUrls: string[] = [];
   try {
     const user = req.user!;
 
@@ -171,7 +181,7 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const imageUrls = await uploadFiles(req.files);
+    imageUrls = await uploadImages(req.files, 'listings');
 
     const listing = await Listing.create({
       sellerId: user._id,
@@ -180,6 +190,7 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
       images: imageUrls,
       category: fields.category,
       price: fields.price,
+      originalPrice: fields.originalPrice ?? undefined,
       isNegotiable: fields.isNegotiable ?? false,
       condition: fields.condition || 'Used - Good',
       sellerName: user.name,
@@ -205,6 +216,7 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
     });
   } catch (error) {
     console.error('Create listing error:', error);
+    deleteImages(imageUrls); // don't leave orphaned uploads behind
     res.status(500).json({ success: false, message: 'Failed to create listing' });
   }
 };
@@ -223,12 +235,18 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
     const rawSort = asString(req.query.sort) || 'newest';
     const search = asString(req.query.search, 100);
     const rawCursor = asString(req.query.cursor);
+    const rawCondition = asString(req.query.condition);
+    const minPrice = Number(asString(req.query.minPrice));
+    const maxPrice = Number(asString(req.query.maxPrice));
+    const freeOnly = asString(req.query.free) === '1';
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const sort = (SORT_OPTIONS as readonly string[]).includes(rawSort) ? rawSort : 'newest';
     const category =
       rawCategory && (LISTING_CATEGORIES as readonly string[]).includes(rawCategory) ? rawCategory : undefined;
+    const condition =
+      rawCondition && (ITEM_CONDITIONS as readonly string[]).includes(rawCondition) ? rawCondition : undefined;
     // Cursor pagination only applies to date sorts
     const cursor =
       rawCursor && isObjectId(rawCursor) && (sort === 'newest' || sort === 'oldest') ? rawCursor : undefined;
@@ -237,11 +255,21 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
 
     // Build filter query
     const filter: Record<string, unknown> = {
-      status: 'ACTIVE',
+      status: { $in: VISIBLE_STATUSES },
       expiresAt: { $gt: new Date() },
     };
     if (category) filter.category = category;
+    if (condition) filter.condition = condition;
     if (search) filter.$text = { $search: search };
+
+    const priceFilter: Record<string, number> = {};
+    if (freeOnly) {
+      priceFilter.$lte = 0;
+    } else {
+      if (Number.isFinite(minPrice) && minPrice > 0) priceFilter.$gte = minPrice;
+      if (Number.isFinite(maxPrice) && maxPrice >= 0 && asString(req.query.maxPrice)) priceFilter.$lte = maxPrice;
+    }
+    if (Object.keys(priceFilter).length > 0) filter.price = priceFilter;
 
     // Base filter (without cursor) is used for the total count
     const countFilter = { ...filter };
@@ -262,7 +290,10 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
         sortOption = { createdAt: -1, _id: -1 };
     }
 
-    const cacheKey = `listings_${pageNum}_${limitNum}_${category || 'all'}_${sort}_${search || ''}_${cursor || ''}`;
+    const cacheKey = [
+      'listings', pageNum, limitNum, category || 'all', sort, search || '', cursor || '',
+      condition || '', JSON.stringify(priceFilter),
+    ].join('_');
     const cachedResponse = cache.get(cacheKey);
     if (cachedResponse) {
       res.status(200).json(cachedResponse);
@@ -275,6 +306,8 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
         .select({
           title: 1,
           price: 1,
+          originalPrice: 1,
+          status: 1,
           condition: 1,
           category: 1,
           meetAddress: 1,
@@ -284,7 +317,7 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
           createdAt: 1,
           images: { $slice: 1 }, // Only fetch the first image for the feed
         })
-        .populate('sellerId', 'name averageRating')
+        .populate('sellerId', 'name averageRating leavingDate isVerified')
         .sort(sortOption)
         .skip(skip)
         .limit(limitNum + 1)
@@ -331,7 +364,10 @@ export const getListingById = async (req: Request, res: Response): Promise<void>
     }
 
     const listing = await Listing.findById(req.params.id)
-      .populate('sellerId', 'name profileImage averageRating totalRatings totalItemsSold meetAddress phone createdAt')
+      .populate(
+        'sellerId',
+        'name profileImage averageRating totalRatings totalItemsSold meetAddress phone leavingDate isVerified createdAt'
+      )
       .lean();
 
     const sellerId = (listing?.sellerId as { _id?: unknown } | undefined)?._id?.toString();
@@ -342,7 +378,8 @@ export const getListingById = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const isExpired = listing.status === 'ACTIVE' && new Date(listing.expiresAt) <= new Date();
+    const isExpired =
+      (listing.status === 'ACTIVE' || listing.status === 'RESERVED') && new Date(listing.expiresAt) <= new Date();
 
     res.status(200).json({
       success: true,
@@ -407,19 +444,33 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
       );
     }
 
-    const newImageUrls = await uploadFiles(req.files);
-    listing.images = [...keptImages, ...newImageUrls].slice(0, 4);
+    const previousImages = [...listing.images];
+    const newImageUrls = await uploadImages(req.files, 'listings');
+    const finalImages = orderImages(req.body.imageOrder, keptImages, newImageUrls).slice(0, 4);
+    listing.images = finalImages;
 
     if (fields.title !== undefined) listing.title = fields.title;
     if (fields.description !== undefined) listing.description = fields.description;
     if (fields.category !== undefined) listing.category = fields.category as typeof listing.category;
     if (fields.price !== undefined) listing.price = fields.price;
+    if (fields.originalPrice !== undefined) {
+      listing.originalPrice =
+        fields.originalPrice != null && fields.originalPrice > listing.price ? fields.originalPrice : undefined;
+    }
     if (fields.isNegotiable !== undefined) listing.isNegotiable = fields.isNegotiable;
     if (fields.condition !== undefined) listing.condition = fields.condition as typeof listing.condition;
     if (fields.meetAddress) listing.meetAddress = fields.meetAddress;
 
-    await listing.save();
+    try {
+      await listing.save();
+    } catch (saveError) {
+      deleteImages(newImageUrls); // the edit didn't stick, so the new uploads are orphans
+      throw saveError;
+    }
     invalidateListingsCache();
+
+    // Photos the seller removed (or that didn't fit in the 4-photo limit)
+    deleteImages([...previousImages, ...newImageUrls].filter((url) => !finalImages.includes(url)));
 
     res.status(200).json({
       success: true,
@@ -435,15 +486,15 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
 // ============================================================
 // PATCH /api/listings/:id/status
 //
-// Toggle listing status (ACTIVE ↔ SOLD). Owner only.
+// Set listing status (ACTIVE / RESERVED / SOLD). Owner only.
 // Keeps the seller's totalItemsSold counter in sync.
 // ============================================================
 export const updateListingStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status } = req.body;
 
-    if (status !== 'ACTIVE' && status !== 'SOLD') {
-      res.status(400).json({ success: false, message: 'Status must be ACTIVE or SOLD' });
+    if (status !== 'ACTIVE' && status !== 'SOLD' && status !== 'RESERVED') {
+      res.status(400).json({ success: false, message: 'Status must be ACTIVE, RESERVED or SOLD' });
       return;
     }
 
@@ -471,16 +522,17 @@ export const updateListingStatus = async (req: Request, res: Response): Promise<
     if (status === 'SOLD' && previousStatus !== 'SOLD') {
       await User.findByIdAndUpdate(listing.sellerId, { $inc: { totalItemsSold: 1 } });
     }
-    if (status === 'ACTIVE' && previousStatus === 'SOLD') {
+    if (status !== 'SOLD' && previousStatus === 'SOLD') {
       await User.findByIdAndUpdate(listing.sellerId, { $inc: { totalItemsSold: -1 } });
     }
 
     invalidateListingsCache();
 
+    const label = status === 'ACTIVE' ? 'available' : status.toLowerCase();
     res.status(200).json({
       success: true,
       data: listing,
-      message: `Listing marked as ${status.toLowerCase()}`,
+      message: `Listing marked as ${label}`,
     });
   } catch (error) {
     console.error('Update status error:', error);
@@ -512,14 +564,51 @@ export const deleteListing = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Free up Cloudinary storage — the listing is gone for good
+    const photos = [...listing.images];
     listing.status = 'DELETED';
+    listing.images = [];
     await listing.save();
+    deleteImages(photos);
     invalidateListingsCache();
 
     res.status(200).json({ success: true, message: 'Listing deleted successfully' });
   } catch (error) {
     console.error('Delete listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete listing' });
+  }
+};
+
+// ============================================================
+// GET /api/listings/stats
+//
+// Headline numbers for the home page hero (cached 60s).
+// ============================================================
+export const getMarketplaceStats = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const cached = cache.get('marketplace_stats');
+    if (cached) {
+      res.status(200).json(cached);
+      return;
+    }
+
+    const now = new Date();
+    const liveFilter = { status: { $in: VISIBLE_STATUSES }, expiresAt: { $gt: now } };
+    const monthAgo = new Date(now.getTime() - THIRTY_DAYS_MS);
+
+    const [liveListings, sellers, soldThisMonth, freeItems] = await Promise.all([
+      Listing.countDocuments(liveFilter),
+      Listing.distinct('sellerId', liveFilter).then((ids) => ids.length),
+      Listing.countDocuments({ status: 'SOLD', updatedAt: { $gt: monthAgo } }),
+      Listing.countDocuments({ ...liveFilter, price: 0 }),
+    ]);
+
+    const body = { success: true, data: { liveListings, sellers, soldThisMonth, freeItems } };
+    cache.set('marketplace_stats', body);
+    res.status(200).json(body);
+  } catch (error) {
+    console.error('Get stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch stats' });
   }
 };
 
@@ -574,7 +663,7 @@ export const renewListing = async (req: Request, res: Response): Promise<void> =
     }
 
     listing.expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
-    listing.status = 'ACTIVE';
+    if (listing.status !== 'RESERVED') listing.status = 'ACTIVE';
     await listing.save();
     invalidateListingsCache();
 
@@ -609,6 +698,8 @@ export const adminDeleteListing = async (req: Request, res: Response): Promise<v
       return;
     }
 
+    // Photos are kept on purpose: a reported listing (e.g. a suspected
+    // stolen item) may still be needed as evidence by moderators.
     listing.status = 'DELETED';
     await listing.save();
     await Report.updateMany({ listingId: listing._id, status: 'PENDING' }, { status: 'REVIEWED' });
