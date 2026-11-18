@@ -94,7 +94,7 @@ export function HomeFilters() {
           onChange={(e) => set({ search: e.target.value })}
           aria-label="Search listings"
           className="w-full !pl-12 !pr-32 !py-4 text-base !rounded-2xl !bg-bg-panel [box-shadow:var(--shadow-card)]"
-          placeholder="Search books, cycles, mattresses..."
+          placeholder="Search for anything..."
         />
         <button
           onClick={() => setShowSheet(true)}

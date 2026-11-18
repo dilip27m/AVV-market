@@ -66,27 +66,27 @@ export default async function Home({
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
         {/* Hero (only on the unfiltered home page) */}
         {!isFiltered && (
-          <section className="relative overflow-hidden rounded-[2rem] border border-border-subtle bg-bg-panel px-6 py-10 sm:px-12 sm:py-14 mb-8 [box-shadow:var(--shadow-card)]">
+          <section className="relative overflow-hidden rounded-[2rem] border border-border-subtle bg-bg-panel px-5 py-7 sm:px-12 sm:py-14 mb-6 sm:mb-8 [box-shadow:var(--shadow-card)]">
             <div className="absolute -top-32 -right-20 h-80 w-80 rounded-full bg-brand-primary/20 blur-3xl" aria-hidden="true" />
             <div className="absolute -bottom-32 -left-16 h-72 w-72 rounded-full bg-warning/10 blur-3xl" aria-hidden="true" />
             <div className="relative max-w-2xl space-y-5">
               <span className="chip !bg-brand-soft !text-brand-primary !border-transparent">🎓 Farewell season is here</span>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-[1.05] text-balance">
+              <h1 className="text-[2rem] sm:text-5xl lg:text-6xl font-extrabold leading-[1.05] text-balance">
                 Seniors are leaving.
                 <br />
                 <span className="text-brand-primary">Their stuff doesn&apos;t have to.</span>
               </h1>
-              <p className="text-text-secondary text-base sm:text-lg max-w-xl">
+              <p className="hidden sm:block text-text-secondary text-lg max-w-xl">
                 Buy textbooks, cycles, mattresses and more from students on your campus. Meet up, check it out, pay in cash or UPI.
               </p>
-              <div className="flex flex-wrap gap-3 pt-1">
-                <Link href="/sell" className="btn-primary">Sell your stuff</Link>
-                <Link href="/wanted" className="btn-secondary">Post what you need</Link>
+              <div className="flex flex-wrap gap-2 sm:gap-3 pt-1">
+                <Link href="/sell" className="btn-primary text-sm sm:text-base px-4 sm:px-5 py-2.5 sm:py-3">Sell your stuff</Link>
+                <Link href="/wanted" className="btn-secondary text-sm sm:text-base px-4 sm:px-5 py-2.5 sm:py-3">Post what you need</Link>
               </div>
             </div>
 
             {stats && stats.liveListings > 0 && (
-              <dl className="relative mt-10 grid grid-cols-3 gap-4 max-w-lg">
+              <dl className="relative mt-6 sm:mt-10 grid grid-cols-3 gap-4 max-w-lg">
                 {[
                   { label: 'Items for sale', value: stats.liveListings },
                   { label: 'Sellers', value: stats.sellers },

@@ -11,7 +11,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
     const { id } = await params;
-    const res = await fetch(`${API_URL}/listings/${id}`, { next: { revalidate: 60 } });
+    // Always fresh, so edited prices show up immediately in tab titles and share previews
+    const res = await fetch(`${API_URL}/listings/${id}`, { cache: 'no-store' });
     if (!res.ok) return { title: 'Listing not found' };
 
     const listing = (await res.json()).data;
