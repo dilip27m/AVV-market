@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Navbar, Avatar } from '@/components/Navbar';
 import { RequireAuth } from '@/components/RequireAuth';
 import { useAuth } from '@/context/AuthContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { api, getErrorMessage } from '@/lib/api';
 import { safeRedirectPath } from '@/lib/auth-tokens';
 import { CAMPUS_SPOTS } from '@/lib/constants';
@@ -176,6 +177,77 @@ function EditProfileForm() {
           </button>
         </div>
       </form>
+
+      {!isWelcome && <DeleteAccount />}
+    </div>
+  );
+}
+
+/** Self-serve account deletion. Typing DELETE is required to enable the button. */
+function DeleteAccount() {
+  const { logout } = useAuth();
+  const confirm = useConfirm();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Delete your account forever?',
+      message: 'Your listings, photos, questions, Wanted requests and ratings will be permanently removed. This cannot be undone.',
+      confirmLabel: 'Delete everything',
+      danger: true,
+    });
+    if (!ok) return;
+
+    setIsDeleting(true);
+    try {
+      await api.delete('/users/me', { data: { confirm: 'DELETE' } });
+      toast.success('Your account has been deleted. Goodbye! 👋');
+      logout(); // clears tokens and returns to the homepage
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to delete account.'));
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <div className="pt-6 border-t border-border-subtle space-y-3">
+      <h2 className="text-sm font-semibold text-danger">Danger zone</h2>
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} className="text-sm text-text-muted hover:text-danger underline">
+          Delete my account
+        </button>
+      ) : (
+        <div className="space-y-3 rounded-2xl border border-danger/30 bg-danger-soft p-4">
+          <p className="text-sm text-text-secondary">
+            This permanently deletes your account and <strong>everything</strong> you&apos;ve posted. Type{' '}
+            <strong className="text-danger">DELETE</strong> to confirm.
+          </p>
+          <input
+            type="text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            className="w-full"
+            placeholder="DELETE"
+            aria-label="Type DELETE to confirm"
+            autoComplete="off"
+          />
+          <div className="flex gap-3 justify-end">
+            <button type="button" onClick={() => { setOpen(false); setTyped(''); }} className="btn-secondary text-sm px-4 py-2">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={typed !== 'DELETE' || isDeleting}
+              className="inline-flex items-center justify-center rounded-full bg-danger px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete my account'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

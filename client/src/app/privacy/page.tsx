@@ -19,7 +19,7 @@ const SECTIONS = [
     title: 'Who can see what',
     body: [
       'Anyone can see your listings, your name, photo, rating and meet-up spot.',
-      'Your WhatsApp number appears on your listings and Lost & Found reports so people can contact you. On the Wanted board, it is shown only to logged-in users.',
+      'Your WhatsApp number appears on your listings so buyers can contact you. On the Wanted board, it is shown only to logged-in users.',
       'Your email address is never shown to other users. Moderators can see it when you report a listing.',
     ],
   },
@@ -32,7 +32,8 @@ const SECTIONS = [
   {
     title: 'Deleting your data',
     body: [
-      'You can delete your listings, questions and requests at any time. To delete your whole account, contact the maintainers and we’ll remove it.',
+      'You can delete your listings, questions and requests at any time.',
+      'To delete your whole account, go to Profile → Edit profile details → Delete my account. Your listings, photos, questions, Wanted requests and ratings are permanently removed straight away.',
     ],
   },
 ];

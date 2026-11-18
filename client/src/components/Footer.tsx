@@ -22,7 +22,7 @@ export function Footer() {
           <Link href="/sell" className="text-text-secondary hover:text-text-primary">Sell an item</Link>
           <Link href="/privacy" className="text-text-secondary hover:text-text-primary">Privacy</Link>
           <Link href="/wanted" className="text-text-secondary hover:text-text-primary">Wanted board</Link>
-          <Link href="/lost-and-found" className="text-text-secondary hover:text-text-primary">Lost & Found</Link>
+          <Link href="/saved" className="text-text-secondary hover:text-text-primary">Saved items</Link>
         </div>
       </div>
       <p className="max-w-7xl mx-auto px-4 md:px-6 mt-8 text-xs text-text-muted">

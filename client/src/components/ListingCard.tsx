@@ -29,6 +29,7 @@ export function ListingCard({ listing, seller: sellerOverride, priority = false 
   const leaving = leavingLabel(seller.leavingDate);
   const isFree = listing.price <= 0;
   const isReserved = listing.status === 'RESERVED';
+  const isSold = listing.status === 'SOLD';
   const saved = isSaved(listing._id);
 
   return (
@@ -43,7 +44,7 @@ export function ListingCard({ listing, seller: sellerOverride, priority = false 
               fill
               priority={priority}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              className={`object-cover transition-transform duration-500 group-hover:scale-105 ${isReserved ? 'opacity-70' : ''}`}
+              className={`object-cover transition-transform duration-500 group-hover:scale-105 ${isSold ? 'grayscale opacity-60' : isReserved ? 'opacity-70' : ''}`}
             />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-text-muted">
@@ -56,9 +57,10 @@ export function ListingCard({ listing, seller: sellerOverride, priority = false 
 
           {/* Top-left badges */}
           <div className="absolute top-2.5 left-2.5 flex flex-col items-start gap-1.5">
+            {isSold && <span className="badge bg-black/80 text-white">Sold</span>}
             {isReserved && <span className="badge bg-black/80 text-white">Reserved</span>}
-            {isFree && !isReserved && <span className="badge bg-success text-white">Free</span>}
-            {discount && discount >= 10 && !isFree && (
+            {isFree && !isReserved && !isSold && <span className="badge bg-success text-white">Free</span>}
+            {discount && discount >= 10 && !isFree && !isSold && (
               <span className="badge bg-brand-primary" style={{ color: 'var(--text-on-brand)' }}>
                 {discount}% off
               </span>

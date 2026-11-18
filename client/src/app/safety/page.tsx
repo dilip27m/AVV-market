@@ -12,7 +12,7 @@ const TIPS = [
   { icon: '🔍', title: 'Inspect before you pay', text: 'Switch on electronics, check chargers, flip through books, test-ride cycles. Once you pay, the deal is done.' },
   { icon: '💸', title: 'Never pay in advance', text: 'Pay only when you have the item in hand. If someone pressures you to “reserve” with a UPI payment, walk away.' },
   { icon: '🧾', title: 'Ask about the bill and warranty', text: 'For phones, laptops and appliances, ask for the original bill. It helps with warranty claims and proves the item isn’t stolen.' },
-  { icon: '🚨', title: 'Check Lost & Found', text: 'If an expensive item seems too cheap, search Lost & Found. Report suspicious listings using the “Report listing” link.' },
+  { icon: '🚨', title: 'Too good to be true?', text: 'If an expensive item is suspiciously cheap or the seller avoids meeting in person, walk away and use the “Report listing” link.' },
   { icon: '🤝', title: 'Be a good seller', text: 'Describe flaws honestly, mark items sold quickly, and reply to messages. Good ratings help your other listings sell.' },
 ];
 
@@ -34,7 +34,7 @@ export default function SafetyPage() {
         </div>
         <div className="mt-10 flex flex-wrap gap-3">
           <Link href="/" className="btn-primary">Start browsing</Link>
-          <Link href="/lost-and-found" className="btn-secondary">Check Lost & Found</Link>
+          <Link href="/sell" className="btn-secondary">Sell an item</Link>
         </div>
       </main>
     </div>

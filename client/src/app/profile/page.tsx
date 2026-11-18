@@ -20,6 +20,14 @@ interface MyListing {
   expiresAt: string;
 }
 
+interface MyRequest {
+  _id: string;
+  title: string;
+  budget?: number | null;
+  status: 'OPEN' | 'FULFILLED' | 'CLOSED';
+  expiresAt: string;
+}
+
 const Thumb = ({ src, muted }: { src?: string; muted?: boolean }) => (
   <div className={`relative w-16 h-16 rounded-md bg-bg-hover overflow-hidden flex-shrink-0 ${muted ? 'grayscale' : ''}`}>
     {src && <Image src={src} alt="" fill sizes="64px" className="object-cover" />}
@@ -32,7 +40,7 @@ function ProfileContent() {
   const { user, refreshUser } = useAuth();
   const confirm = useConfirm();
   const [myListings, setMyListings] = useState<MyListing[]>([]);
-  const [wishlist, setWishlist] = useState<(MyListing & { isNegotiable?: boolean })[]>([]);
+  const [requests, setRequests] = useState<MyRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -41,12 +49,9 @@ function ProfileContent() {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const [listingsRes, wishlistRes] = await Promise.all([
-          api.get('/listings/my'),
-          api.get('/users/me/wishlist'),
-        ]);
+        const [listingsRes, requestsRes] = await Promise.all([api.get('/listings/my'), api.get('/wanted/my')]);
         setMyListings(listingsRes.data.data || []);
-        setWishlist(wishlistRes.data.data || []);
+        setRequests(requestsRes.data.data || []);
       } catch (error) {
         console.error('Failed to fetch profile data', error);
         toast.error('Could not load your listings. Please refresh.');
@@ -77,13 +82,25 @@ function ProfileContent() {
     }
   };
 
-  const handleRemoveFromWishlist = async (id: string) => {
+  const handleRequestStatus = async (id: string, status: MyRequest['status']) => {
     try {
-      await api.post(`/users/wishlist/${id}`);
-      setWishlist((prev) => prev.filter((l) => l._id !== id));
-      toast.success('Removed from wishlist');
+      const { data } = await api.patch(`/wanted/${id}/status`, { status });
+      setRequests((prev) => prev.map((r) => (r._id === id ? data.data : r)));
+      toast.success(status === 'OPEN' ? 'Request reopened for 30 days' : 'Request closed');
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to update wishlist'));
+      toast.error(getErrorMessage(error, 'Failed to update request'));
+    }
+  };
+
+  const handleDeleteRequest = async (id: string) => {
+    const ok = await confirm({ title: 'Delete this request?', confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
+    try {
+      await api.delete(`/wanted/${id}`);
+      setRequests((prev) => prev.filter((r) => r._id !== id));
+      toast.success('Request deleted');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to delete request'));
     }
   };
 
@@ -272,33 +289,41 @@ function ProfileContent() {
           </div>
         )}
 
-        {/* Wishlist */}
+        {/* Wanted requests */}
         <div className="panel-card space-y-4">
-          <h3 className="text-lg font-semibold mb-2">Saved Items ({wishlist.length})</h3>
-          {wishlist.length === 0 ? (
-            <p className="text-sm text-text-muted">Tap “Save for later” on any listing to keep it here.</p>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-lg font-semibold">Your Wanted requests ({requests.filter((r) => r.status === 'OPEN').length} open)</h3>
+            <Link href="/wanted" className="btn-secondary text-sm px-3 py-1.5">Wanted board</Link>
+          </div>
+          {requests.length === 0 ? (
+            <p className="text-sm text-text-muted">
+              Looking for something nobody&apos;s selling? <Link href="/wanted" className="underline hover:text-text-primary">Post a request</Link> and sellers will reach out.
+            </p>
           ) : (
             <div>
-              {wishlist.map((listing) => (
-                <div key={listing._id} className="flex gap-4 py-4 border-b border-border-subtle items-center last:border-0">
-                  <Thumb src={listing.images?.[0]} muted={listing.status !== 'ACTIVE'} />
-                  <div className="flex-1 min-w-0">
-                    <Link href={`/listing/${listing._id}`} className="font-semibold text-text-primary hover:text-brand-primary truncate block">
-                      {listing.title}
-                    </Link>
-                    <p className="text-sm font-medium text-brand-primary mt-1">
-                      ₹{listing.price?.toLocaleString('en-IN')}
-                      {listing.status === 'SOLD' && <span className="ml-2 text-xs text-text-muted">· Sold</span>}
-                    </p>
+              {requests.map((req) => {
+                const expired = req.status === 'OPEN' && new Date(req.expiresAt) <= new Date();
+                const live = req.status === 'OPEN' && !expired;
+                return (
+                  <div key={req._id} className="flex gap-4 py-3 border-b border-border-subtle items-center last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold truncate ${live ? '' : 'text-text-muted'}`}>{req.title}</p>
+                      <p className="text-xs text-text-muted">
+                        {live ? `Open · expires in ${daysLeft(req.expiresAt)} days` : expired ? 'Expired' : req.status === 'FULFILLED' ? 'Found it 🎉' : 'Closed'}
+                        {req.budget != null && ` · budget ₹${req.budget.toLocaleString('en-IN')}`}
+                      </p>
+                    </div>
+                    <div className="flex gap-3 shrink-0 text-xs">
+                      {live ? (
+                        <button onClick={() => handleRequestStatus(req._id, 'FULFILLED')} className="font-semibold text-success hover:underline">Found it</button>
+                      ) : (
+                        <button onClick={() => handleRequestStatus(req._id, 'OPEN')} className="font-semibold text-brand-primary hover:underline">Reopen</button>
+                      )}
+                      <button onClick={() => handleDeleteRequest(req._id)} className="text-text-muted hover:text-danger">Delete</button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleRemoveFromWishlist(listing._id)}
-                    className="px-3 py-1.5 text-xs font-medium bg-bg-panel text-text-secondary hover:text-red-500 rounded-lg transition-colors border border-border-subtle shrink-0"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -321,6 +346,9 @@ function ProfileContent() {
           </div>
         </div>
 
+        <Link href="/saved" className="btn-secondary w-full flex justify-center text-sm py-3">
+          ♡ Saved items
+        </Link>
         <Link href="/profile/edit" className="btn-secondary w-full flex justify-center text-sm py-3">
           Edit profile details
         </Link>

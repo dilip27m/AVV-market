@@ -11,7 +11,7 @@ import { ThemeToggle } from './ThemeToggle';
 const NAV_LINKS = [
   { href: '/', label: 'Browse' },
   { href: '/wanted', label: 'Wanted' },
-  { href: '/lost-and-found', label: 'Lost & Found' },
+  { href: '/saved', label: 'Saved' },
 ];
 
 export function Avatar({ name, src, size = 32 }: { name: string; src?: string; size?: number }) {

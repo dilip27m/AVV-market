@@ -31,7 +31,7 @@ const uploadOne = (buffer: Buffer, folder: string): Promise<string> =>
  * If any upload fails, the ones that succeeded are deleted again so
  * nothing is left orphaned.
  */
-export const uploadImages = async (files: unknown, subfolder: 'listings' | 'missing'): Promise<string[]> => {
+export const uploadImages = async (files: unknown, subfolder: 'listings'): Promise<string[]> => {
   if (!Array.isArray(files) || files.length === 0) return [];
 
   const results = await Promise.allSettled(

@@ -16,6 +16,34 @@ export const invalidateListingsCache = (): void => {
 };
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Put a listing's photos in the order the seller chose (first = cover).
+ * `imageOrder` is a JSON array mixing kept URLs and "new:<index>" tokens
+ * for this request's uploads. Anything unknown is ignored, and any photo
+ * the order forgot is appended, so a bad order can never lose a photo.
+ */
+const orderImages = (imageOrder: unknown, kept: string[], uploaded: string[]): string[] => {
+  const fallback = [...kept, ...uploaded];
+  if (typeof imageOrder !== 'string') return fallback;
+
+  let tokens: unknown;
+  try {
+    tokens = JSON.parse(imageOrder);
+  } catch {
+    return fallback;
+  }
+  if (!Array.isArray(tokens)) return fallback;
+
+  const ordered: string[] = [];
+  for (const token of tokens) {
+    if (typeof token !== 'string') continue;
+    const match = token.match(/^new:(\d+)$/);
+    const url = match ? uploaded[Number(match[1])] : kept.includes(token) ? token : undefined;
+    if (url && !ordered.includes(url)) ordered.push(url);
+  }
+  return [...ordered, ...fallback.filter((url) => !ordered.includes(url))];
+};
 const SORT_OPTIONS = ['newest', 'oldest', 'price_low', 'price_high'] as const;
 
 // ============================================================
@@ -418,7 +446,7 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
 
     const previousImages = [...listing.images];
     const newImageUrls = await uploadImages(req.files, 'listings');
-    const finalImages = [...keptImages, ...newImageUrls].slice(0, 4);
+    const finalImages = orderImages(req.body.imageOrder, keptImages, newImageUrls).slice(0, 4);
     listing.images = finalImages;
 
     if (fields.title !== undefined) listing.title = fields.title;
