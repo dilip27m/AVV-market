@@ -2,9 +2,8 @@ import { Request, Response } from 'express';
 import { Listing, LISTING_CATEGORIES, ITEM_CONDITIONS, VISIBLE_STATUSES } from '../models/Listing';
 import { User } from '../models/User';
 import { Report } from '../models/Report';
-import cloudinary from '../config/cloudinary';
-import { Readable } from 'stream';
 import NodeCache from 'node-cache';
+import { uploadImages, deleteImages } from '../utils/images';
 import { isAdminUser } from '../middleware/auth.middleware';
 import { asString, isObjectId, normalizePhone } from '../utils/validate';
 
@@ -18,48 +17,6 @@ export const invalidateListingsCache = (): void => {
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const SORT_OPTIONS = ['newest', 'oldest', 'price_low', 'price_high'] as const;
-
-// ============================================================
-// Helper: Upload buffer to Cloudinary
-// ============================================================
-const uploadToCloudinary = (
-  buffer: Buffer,
-  folder: string
-): Promise<{ secure_url: string; public_id: string }> => {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'image',
-        transformation: [
-          { width: 800, height: 800, crop: 'limit' }, // max 800x800, maintain ratio
-          { quality: 'auto:good' },
-          { fetch_format: 'auto' },
-        ],
-      },
-      (error, result) => {
-        if (error || !result) {
-          reject(error || new Error('Upload failed'));
-        } else {
-          resolve({ secure_url: result.secure_url, public_id: result.public_id });
-        }
-      }
-    );
-
-    const readable = new Readable();
-    readable.push(buffer);
-    readable.push(null);
-    readable.pipe(uploadStream);
-  });
-};
-
-const uploadFiles = async (files: Request['files']): Promise<string[]> => {
-  if (!files || !Array.isArray(files) || files.length === 0) return [];
-  const results = await Promise.all(
-    files.map((file) => uploadToCloudinary(file.buffer, 'avv-market/listings'))
-  );
-  return results.map((r) => r.secure_url);
-};
 
 // ============================================================
 // Helper: Validate listing fields from a multipart body.
@@ -164,6 +121,8 @@ const validateListingBody = (
 // phone / meet address yet, we save these as their defaults.
 // ============================================================
 export const createListing = async (req: Request, res: Response): Promise<void> => {
+  // Tracked outside try so we can clean up uploads if saving fails
+  let imageUrls: string[] = [];
   try {
     const user = req.user!;
 
@@ -194,7 +153,7 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const imageUrls = await uploadFiles(req.files);
+    imageUrls = await uploadImages(req.files, 'listings');
 
     const listing = await Listing.create({
       sellerId: user._id,
@@ -229,6 +188,7 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
     });
   } catch (error) {
     console.error('Create listing error:', error);
+    deleteImages(imageUrls); // don't leave orphaned uploads behind
     res.status(500).json({ success: false, message: 'Failed to create listing' });
   }
 };
@@ -456,8 +416,10 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
       );
     }
 
-    const newImageUrls = await uploadFiles(req.files);
-    listing.images = [...keptImages, ...newImageUrls].slice(0, 4);
+    const previousImages = [...listing.images];
+    const newImageUrls = await uploadImages(req.files, 'listings');
+    const finalImages = [...keptImages, ...newImageUrls].slice(0, 4);
+    listing.images = finalImages;
 
     if (fields.title !== undefined) listing.title = fields.title;
     if (fields.description !== undefined) listing.description = fields.description;
@@ -471,8 +433,16 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
     if (fields.condition !== undefined) listing.condition = fields.condition as typeof listing.condition;
     if (fields.meetAddress) listing.meetAddress = fields.meetAddress;
 
-    await listing.save();
+    try {
+      await listing.save();
+    } catch (saveError) {
+      deleteImages(newImageUrls); // the edit didn't stick, so the new uploads are orphans
+      throw saveError;
+    }
     invalidateListingsCache();
+
+    // Photos the seller removed (or that didn't fit in the 4-photo limit)
+    deleteImages([...previousImages, ...newImageUrls].filter((url) => !finalImages.includes(url)));
 
     res.status(200).json({
       success: true,
@@ -566,8 +536,12 @@ export const deleteListing = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Free up Cloudinary storage — the listing is gone for good
+    const photos = [...listing.images];
     listing.status = 'DELETED';
+    listing.images = [];
     await listing.save();
+    deleteImages(photos);
     invalidateListingsCache();
 
     res.status(200).json({ success: true, message: 'Listing deleted successfully' });
@@ -696,6 +670,8 @@ export const adminDeleteListing = async (req: Request, res: Response): Promise<v
       return;
     }
 
+    // Photos are kept on purpose: a reported listing (e.g. a suspected
+    // stolen item) may still be needed as evidence by moderators.
     listing.status = 'DELETED';
     await listing.save();
     await Report.updateMany({ listingId: listing._id, status: 'PENDING' }, { status: 'REVIEWED' });

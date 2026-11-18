@@ -1,42 +1,7 @@
 import { Request, Response } from 'express';
 import { MissingItem, MISSING_STATUS } from '../models/MissingItem';
 import { asString } from '../utils/validate';
-import cloudinary from '../config/cloudinary';
-import { Readable } from 'stream';
-
-// ============================================================
-// Helper: Upload buffer to Cloudinary
-// ============================================================
-const uploadToCloudinary = (
-  buffer: Buffer,
-  folder: string
-): Promise<{ secure_url: string; public_id: string }> => {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'image',
-        transformation: [
-          { width: 800, height: 800, crop: 'limit' },
-          { quality: 'auto:good' },
-          { fetch_format: 'auto' },
-        ],
-      },
-      (error, result) => {
-        if (error || !result) {
-          reject(error || new Error('Upload failed'));
-        } else {
-          resolve({ secure_url: result.secure_url, public_id: result.public_id });
-        }
-      }
-    );
-
-    const readable = new Readable();
-    readable.push(buffer);
-    readable.push(null);
-    readable.pipe(uploadStream);
-  });
-};
+import { uploadImages, deleteImages } from '../utils/images';
 
 // ============================================================
 // POST /api/missing-items
@@ -45,19 +10,13 @@ const uploadToCloudinary = (
 // marketplace listings against these reports.
 // ============================================================
 export const createMissingItem = async (req: Request, res: Response): Promise<void> => {
+  // Tracked outside try so we can clean up uploads if saving fails
+  let imageUrls: string[] = [];
   try {
     const user = req.user!;
     const { title, description, category, lastSeenLocation, lastSeenDate } = req.body;
 
-    // Upload images concurrently
-    let imageUrls: string[] = [];
-    if (req.files && Array.isArray(req.files)) {
-      const uploadPromises = req.files.map(file => 
-        uploadToCloudinary(file.buffer, 'avv-market/missing')
-      );
-      const results = await Promise.all(uploadPromises);
-      imageUrls = results.map(result => result.secure_url);
-    }
+    imageUrls = await uploadImages(req.files, 'missing');
 
     const missingItem = await MissingItem.create({
       reporterId: user._id,
@@ -78,6 +37,7 @@ export const createMissingItem = async (req: Request, res: Response): Promise<vo
     });
   } catch (error) {
     console.error('Create missing item error:', error);
+    deleteImages(imageUrls); // don't leave orphaned uploads behind
     res.status(500).json({
       success: false,
       message: 'Failed to report missing item',
@@ -226,6 +186,7 @@ export const deleteMissingItem = async (req: Request, res: Response): Promise<vo
     }
 
     await MissingItem.findByIdAndDelete(req.params.id);
+    deleteImages(item.images);
 
     res.status(200).json({
       success: true,
