@@ -1,31 +1,33 @@
+import Link from 'next/link';
+import { LogoMark } from './Logo';
+import { APP_NAME } from '@/lib/brand';
+
 export function Footer() {
   return (
-    <footer className="w-full border-t border-border-subtle bg-bg-base py-8 mt-auto">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-        <p className="text-sm text-text-muted">
-          &copy; {new Date().getFullYear()} CampusMart. Built for the campus community.
-        </p>
-        
-        <div className="flex items-center gap-4">
-          <div className="relative group cursor-pointer">
-            <span className="text-sm text-text-secondary hover:text-brand-primary transition-colors flex items-center gap-1">
-              💖 Support the Developer
-            </span>
-            {/* Tooltip/Dropdown with QR Code */}
-            <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50">
-              <div className="bg-bg-panel border border-border-subtle p-3 rounded-xl shadow-lg w-48 text-center">
-                <p className="text-xs text-text-muted mb-2">Scan to donate via UPI</p>
-                <div className="bg-white p-2 rounded-lg inline-block">
-                  {/* Replace with your actual UPI QR code image later */}
-                  <div className="w-32 h-32 bg-gray-200 border border-gray-300 flex items-center justify-center text-[10px] text-gray-500 text-center">
-                    [Your UPI QR]
-                  </div>
-                </div>
-              </div>
-            </div>
+    <footer className="w-full border-t border-border-subtle mt-16 py-10">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 grid gap-8 sm:grid-cols-[1fr_auto]">
+        <div className="space-y-3 max-w-sm">
+          <div className="flex items-center gap-2">
+            <LogoMark className="h-7 w-7" />
+            <span className="font-[family-name:var(--font-display)] font-extrabold">{APP_NAME}</span>
           </div>
+          <p className="text-sm text-text-muted">
+            Seniors pass it on, juniors save money, and less ends up in the bin. Built by students, for the campus.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-12 gap-y-2 text-sm">
+          <Link href="/" className="text-text-secondary hover:text-text-primary">Browse</Link>
+          <Link href="/safety" className="text-text-secondary hover:text-text-primary">Safety tips</Link>
+          <Link href="/sell" className="text-text-secondary hover:text-text-primary">Sell an item</Link>
+          <Link href="/privacy" className="text-text-secondary hover:text-text-primary">Privacy</Link>
+          <Link href="/wanted" className="text-text-secondary hover:text-text-primary">Wanted board</Link>
+          <Link href="/lost-and-found" className="text-text-secondary hover:text-text-primary">Lost & Found</Link>
         </div>
       </div>
+      <p className="max-w-7xl mx-auto px-4 md:px-6 mt-8 text-xs text-text-muted">
+        &copy; {new Date().getFullYear()} {APP_NAME}. Not affiliated with the college administration.
+      </p>
     </footer>
   );
 }

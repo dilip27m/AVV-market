@@ -16,6 +16,8 @@ export interface IUser extends Document {
   totalItemsSold: number;
   wishlist: mongoose.Types.ObjectId[];
   role: 'user' | 'admin';
+  leavingDate?: Date;
+  isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,6 +81,15 @@ const userSchema = new Schema<IUser>(
       type: String,
       enum: ['user', 'admin'],
       default: 'user',
+    },
+    // When the student leaves campus — shown as a countdown on their listings
+    leavingDate: {
+      type: Date,
+    },
+    // True when the Google email belongs to a configured college domain
+    isVerified: {
+      type: Boolean,
+      default: false,
     },
   },
   {

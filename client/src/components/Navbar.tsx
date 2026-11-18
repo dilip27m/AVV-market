@@ -2,11 +2,36 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useRef, useEffect } from 'react';
+import { Logo } from './Logo';
+import { ThemeToggle } from './ThemeToggle';
+
+const NAV_LINKS = [
+  { href: '/', label: 'Browse' },
+  { href: '/wanted', label: 'Wanted' },
+  { href: '/lost-and-found', label: 'Lost & Found' },
+];
+
+export function Avatar({ name, src, size = 32 }: { name: string; src?: string; size?: number }) {
+  return src ? (
+    <span className="relative block rounded-full overflow-hidden border border-border-subtle shrink-0" style={{ width: size, height: size }}>
+      <Image src={src} alt="" fill sizes={`${size}px`} className="object-cover" />
+    </span>
+  ) : (
+    <span
+      className="rounded-full bg-brand-soft text-brand-primary flex items-center justify-center font-bold shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.42 }}
+    >
+      {(name || '?').charAt(0).toUpperCase()}
+    </span>
+  );
+}
 
 export function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, isLoading, logout } = useAuth();
+  const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -16,78 +41,94 @@ export function Navbar() {
         setDropdownOpen(false);
       }
     };
+    const handleEscape = (event: KeyboardEvent) => event.key === 'Escape' && setDropdownOpen(false);
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, []);
 
+  const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
+
   return (
-    <nav className="sticky top-0 z-50 w-full border-b border-border-subtle bg-bg-base/80 backdrop-blur-md">
-      <div className="flex h-14 items-center px-4 md:px-6 justify-between max-w-7xl mx-auto">
-        <Link href="/" className="flex items-center gap-2">
-          {/* A sleek minimal logo/icon placeholder */}
-          <div className="h-6 w-6 rounded bg-brand-primary flex items-center justify-center text-[var(--text-on-brand)] text-xs font-bold">
-            CM
-          </div>
-          <span className="font-semibold text-lg tracking-tight hidden min-[400px]:inline">CampusMart</span>
-        </Link>
+    <nav className="sticky top-0 z-40 w-full border-b border-border-subtle bg-bg-base/75 backdrop-blur-xl backdrop-saturate-150">
+      <div className="flex h-16 items-center px-4 md:px-6 gap-4 max-w-7xl mx-auto">
+        <Logo />
 
-        <div className="flex items-center gap-3 sm:gap-4">
-          <Link href="/lost-and-found" className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
-            Lost & Found
-          </Link>
-          <div className="h-4 w-[1px] bg-border-subtle hidden sm:block" />
+        {/* Desktop links */}
+        <div className="hidden md:flex items-center gap-1 ml-4">
+          {NAV_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`px-3 py-2 rounded-full text-sm font-medium transition-colors ${
+                isActive(link.href) ? 'bg-bg-hover text-text-primary' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
 
-          {user ? (
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
+
+          {isLoading ? (
+            <span className="w-9 h-9 rounded-full skeleton" />
+          ) : user ? (
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 aria-label="Account menu"
                 aria-expanded={dropdownOpen}
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                className="flex items-center rounded-full hover:ring-4 hover:ring-bg-hover transition-shadow"
               >
-                {user.profileImage ? (
-                  <div className="relative w-8 h-8 rounded-full overflow-hidden border border-border-subtle">
-                    <Image src={user.profileImage} alt="Profile" fill sizes="32px" className="object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-brand-primary text-[var(--text-on-brand)] flex items-center justify-center font-bold text-sm">
-                    {user.name.charAt(0)}
-                  </div>
-                )}
+                <Avatar name={user.name} src={user.profileImage} size={36} />
               </button>
 
               {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-bg-panel border border-border-subtle rounded-xl shadow-lg py-1 z-50">
+                <div className="absolute right-0 mt-2 w-60 bg-bg-panel border border-border-subtle rounded-2xl py-2 z-50 animate-fade-up" style={{ boxShadow: 'var(--shadow-card-hover)' }}>
                   <div className="px-4 py-2 border-b border-border-subtle mb-1">
-                    <p className="text-sm font-medium text-text-primary truncate">{user.name}</p>
+                    <p className="text-sm font-semibold text-text-primary truncate">{user.name}</p>
                     <p className="text-xs text-text-muted truncate">{user.email}</p>
                   </div>
-                  <Link href="/profile" className="block px-4 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary" onClick={() => setDropdownOpen(false)}>
-                    My Profile
-                  </Link>
-                  {user.isAdmin && (
-                    <Link href="/admin" className="block px-4 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary" onClick={() => setDropdownOpen(false)}>
-                      Admin Dashboard
+                  {[
+                    { href: '/profile', label: 'My listings & profile' },
+                    { href: `/seller/${user._id}`, label: 'My storefront' },
+                    { href: '/profile/edit', label: 'Settings' },
+                    ...(user.isAdmin ? [{ href: '/admin', label: 'Admin dashboard' }] : []),
+                  ].map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="block px-4 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      {item.label}
                     </Link>
-                  )}
+                  ))}
                   <button
-                    onClick={() => { setDropdownOpen(false); logout(); }}
-                    className="w-full text-left block px-4 py-2 text-sm text-red-500 hover:bg-bg-hover"
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      logout();
+                    }}
+                    className="w-full text-left block px-4 py-2 mt-1 border-t border-border-subtle text-sm text-danger hover:bg-bg-hover"
                   >
-                    Log Out
+                    Log out
                   </button>
                 </div>
               )}
             </div>
           ) : (
-            <Link href="/login" className="btn-secondary text-sm">
-              Log In
+            <Link href={`/login?redirect=${encodeURIComponent(pathname)}`} className="btn-secondary text-sm px-4 py-2">
+              Log in
             </Link>
           )}
 
-          <Link href="/sell" className="btn-primary text-sm px-4 py-2 sm:px-5 sm:py-3">
-            <span className="sm:hidden">+ Sell</span>
-            <span className="hidden sm:inline">Sell Item</span>
+          <Link href="/sell" className="btn-primary text-sm px-5 py-2.5 hidden md:inline-flex">
+            <span aria-hidden="true">+</span> Sell
           </Link>
         </div>
       </div>

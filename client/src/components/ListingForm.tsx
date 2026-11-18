@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import imageCompression from 'browser-image-compression';
 import { api, getErrorMessage } from '@/lib/api';
-import { LISTING_CATEGORIES, ITEM_CONDITIONS } from '@/lib/constants';
+import { LISTING_CATEGORIES, ITEM_CONDITIONS, CAMPUS_SPOTS, CATEGORY_ICONS } from '@/lib/constants';
+import { discountPercent } from '@/lib/format';
 import { useAuth } from '@/context/AuthContext';
 
 const MAX_IMAGES = 4;
@@ -19,6 +20,7 @@ export interface ExistingListing {
   category: string;
   condition: string;
   price: number;
+  originalPrice?: number | null;
   isNegotiable: boolean;
   meetAddress: string;
   images: string[];
@@ -43,6 +45,7 @@ export function ListingForm({ listing }: ListingFormProps) {
   const [category, setCategory] = useState(listing?.category || '');
   const [condition, setCondition] = useState(listing?.condition || 'Used - Good');
   const [price, setPrice] = useState(listing ? String(listing.price) : '');
+  const [originalPrice, setOriginalPrice] = useState(listing?.originalPrice ? String(listing.originalPrice) : '');
   const [isNegotiable, setIsNegotiable] = useState(listing?.isNegotiable || false);
   const [sellerPhone, setSellerPhone] = useState(user?.phone || '');
   const [meetAddress, setMeetAddress] = useState(listing?.meetAddress || user?.meetAddress || '');
@@ -121,6 +124,7 @@ export function ListingForm({ listing }: ListingFormProps) {
       formData.append('category', category);
       formData.append('condition', condition);
       formData.append('price', price);
+      formData.append('originalPrice', originalPrice);
       formData.append('isNegotiable', String(isNegotiable));
       formData.append('meetAddress', meetAddress.trim());
       if (!isEdit) formData.append('sellerPhone', phoneDigits);
@@ -251,7 +255,7 @@ export function ListingForm({ listing }: ListingFormProps) {
               <select id="category" className="w-full" value={category} onChange={(e) => setCategory(e.target.value)} required>
                 <option value="" disabled>Select category...</option>
                 {LISTING_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
+                  <option key={cat} value={cat}>{CATEGORY_ICONS[cat]} {cat}</option>
                 ))}
               </select>
             </div>
@@ -268,7 +272,12 @@ export function ListingForm({ listing }: ListingFormProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="space-y-2">
-              <label htmlFor="price" className="text-sm font-medium text-text-primary">Price (₹)</label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="price" className="text-sm font-medium text-text-primary">Your price (₹)</label>
+                <button type="button" onClick={() => setPrice('0')} className="text-xs text-success font-semibold hover:underline">
+                  🎁 Give it away free
+                </button>
+              </div>
               <input
                 id="price"
                 type="number"
@@ -276,7 +285,7 @@ export function ListingForm({ listing }: ListingFormProps) {
                 min="0"
                 max="1000000"
                 step="1"
-                placeholder="e.g., 500 (0 = free)"
+                placeholder="e.g., 500"
                 className="w-full"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
@@ -284,7 +293,30 @@ export function ListingForm({ listing }: ListingFormProps) {
               />
             </div>
 
-            <div className="flex items-center space-x-3 sm:pt-8">
+            <div className="space-y-2">
+              <label htmlFor="originalPrice" className="text-sm font-medium text-text-primary">
+                Price when new (₹) <span className="text-text-muted font-normal">(optional)</span>
+              </label>
+              <input
+                id="originalPrice"
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                placeholder="e.g., 1200"
+                className="w-full"
+                value={originalPrice}
+                onChange={(e) => setOriginalPrice(e.target.value)}
+              />
+              <p className="text-xs text-text-muted">
+                {(() => {
+                  const pct = discountPercent(Number(price), Number(originalPrice));
+                  return pct ? `Buyers will see “${pct}% off” — great for selling fast.` : 'Shows buyers how much they save.';
+                })()}
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-3 sm:col-span-2">
               <input
                 type="checkbox"
                 id="negotiable"
@@ -344,9 +376,15 @@ export function ListingForm({ listing }: ListingFormProps) {
                 value={meetAddress}
                 onChange={(e) => setMeetAddress(e.target.value)}
                 maxLength={200}
+                list="campus-spots"
                 required
               />
-              <p className="text-xs text-text-muted">Where should the buyer meet you?</p>
+              <datalist id="campus-spots">
+                {CAMPUS_SPOTS.map((spot) => (
+                  <option key={spot} value={spot} />
+                ))}
+              </datalist>
+              <p className="text-xs text-text-muted">Pick a public spot on campus.</p>
             </div>
           </div>
         </div>

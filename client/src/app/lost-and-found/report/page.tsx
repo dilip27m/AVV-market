@@ -45,7 +45,7 @@ export default function ReportMissingItem() {
         const newPreviews = compressedFiles.map(file => URL.createObjectURL(file));
         setImages(prev => [...prev, ...compressedFiles]);
         setPreviews(prev => [...prev, ...newPreviews]);
-      } catch (error) {
+      } catch {
         toast.error('Failed to compress image.');
       }
     }

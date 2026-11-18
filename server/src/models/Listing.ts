@@ -13,12 +13,16 @@ export const LISTING_CATEGORIES = [
   'Bags',
   'Hostel Essentials',
   'Cycles',
+  'Room Bundles',
   'Others',
 ] as const;
 
 export type ListingCategory = (typeof LISTING_CATEGORIES)[number];
 
-export const LISTING_STATUS = ['ACTIVE', 'SOLD', 'EXPIRED', 'DELETED'] as const;
+export const LISTING_STATUS = ['ACTIVE', 'RESERVED', 'SOLD', 'EXPIRED', 'DELETED'] as const;
+
+// Statuses that buyers can see in the feed
+export const VISIBLE_STATUSES = ['ACTIVE', 'RESERVED'] as const;
 export type ListingStatus = (typeof LISTING_STATUS)[number];
 
 export const ITEM_CONDITIONS = ['New', 'Like New', 'Used - Good', 'Used - Fair'] as const;
@@ -35,6 +39,7 @@ export interface IListing extends Document {
   images: string[];
   category: ListingCategory;
   price: number;
+  originalPrice?: number;
   isNegotiable: boolean;
   condition: ItemCondition;
   sellerName: string;
@@ -89,6 +94,11 @@ const listingSchema = new Schema<IListing>(
       type: Number,
       required: [true, 'Price is required'],
       min: [0, 'Price cannot be negative'],
+    },
+    // What the item cost new — lets buyers see the discount
+    originalPrice: {
+      type: Number,
+      min: [0, 'Original price cannot be negative'],
     },
     isNegotiable: {
       type: Boolean,

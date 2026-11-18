@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Listing, LISTING_CATEGORIES, ITEM_CONDITIONS } from '../models/Listing';
+import { Listing, LISTING_CATEGORIES, ITEM_CONDITIONS, VISIBLE_STATUSES } from '../models/Listing';
 import { User } from '../models/User';
 import { Report } from '../models/Report';
 import cloudinary from '../config/cloudinary';
@@ -71,6 +71,7 @@ type ListingFields = {
   description?: string;
   category?: string;
   price?: number;
+  originalPrice?: number | null;
   isNegotiable?: boolean;
   condition?: string;
   meetAddress?: string;
@@ -111,6 +112,19 @@ const validateListingBody = (
     fields.price = Math.round(price);
   }
 
+  // Optional "price when new". Empty string clears it.
+  if (body.originalPrice !== undefined) {
+    if (body.originalPrice === '' || body.originalPrice === null) {
+      fields.originalPrice = null;
+    } else {
+      const originalPrice = Number(body.originalPrice);
+      if (!Number.isFinite(originalPrice) || originalPrice < 0 || originalPrice > 10_000_000) {
+        return { error: 'Enter a valid original price' };
+      }
+      fields.originalPrice = Math.round(originalPrice);
+    }
+  }
+
   if (body.isNegotiable !== undefined) {
     fields.isNegotiable = body.isNegotiable === 'true' || body.isNegotiable === true;
   }
@@ -128,6 +142,15 @@ const validateListingBody = (
       return { error: 'Meet address is too long' };
     }
     fields.meetAddress = body.meetAddress.trim();
+  }
+
+  if (
+    fields.originalPrice != null &&
+    fields.price !== undefined &&
+    fields.originalPrice <= fields.price
+  ) {
+    // Not an error — it just isn't a discount, so don't show it
+    fields.originalPrice = null;
   }
 
   return { fields };
@@ -180,6 +203,7 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
       images: imageUrls,
       category: fields.category,
       price: fields.price,
+      originalPrice: fields.originalPrice ?? undefined,
       isNegotiable: fields.isNegotiable ?? false,
       condition: fields.condition || 'Used - Good',
       sellerName: user.name,
@@ -223,12 +247,18 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
     const rawSort = asString(req.query.sort) || 'newest';
     const search = asString(req.query.search, 100);
     const rawCursor = asString(req.query.cursor);
+    const rawCondition = asString(req.query.condition);
+    const minPrice = Number(asString(req.query.minPrice));
+    const maxPrice = Number(asString(req.query.maxPrice));
+    const freeOnly = asString(req.query.free) === '1';
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const sort = (SORT_OPTIONS as readonly string[]).includes(rawSort) ? rawSort : 'newest';
     const category =
       rawCategory && (LISTING_CATEGORIES as readonly string[]).includes(rawCategory) ? rawCategory : undefined;
+    const condition =
+      rawCondition && (ITEM_CONDITIONS as readonly string[]).includes(rawCondition) ? rawCondition : undefined;
     // Cursor pagination only applies to date sorts
     const cursor =
       rawCursor && isObjectId(rawCursor) && (sort === 'newest' || sort === 'oldest') ? rawCursor : undefined;
@@ -237,11 +267,21 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
 
     // Build filter query
     const filter: Record<string, unknown> = {
-      status: 'ACTIVE',
+      status: { $in: VISIBLE_STATUSES },
       expiresAt: { $gt: new Date() },
     };
     if (category) filter.category = category;
+    if (condition) filter.condition = condition;
     if (search) filter.$text = { $search: search };
+
+    const priceFilter: Record<string, number> = {};
+    if (freeOnly) {
+      priceFilter.$lte = 0;
+    } else {
+      if (Number.isFinite(minPrice) && minPrice > 0) priceFilter.$gte = minPrice;
+      if (Number.isFinite(maxPrice) && maxPrice >= 0 && asString(req.query.maxPrice)) priceFilter.$lte = maxPrice;
+    }
+    if (Object.keys(priceFilter).length > 0) filter.price = priceFilter;
 
     // Base filter (without cursor) is used for the total count
     const countFilter = { ...filter };
@@ -262,7 +302,10 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
         sortOption = { createdAt: -1, _id: -1 };
     }
 
-    const cacheKey = `listings_${pageNum}_${limitNum}_${category || 'all'}_${sort}_${search || ''}_${cursor || ''}`;
+    const cacheKey = [
+      'listings', pageNum, limitNum, category || 'all', sort, search || '', cursor || '',
+      condition || '', JSON.stringify(priceFilter),
+    ].join('_');
     const cachedResponse = cache.get(cacheKey);
     if (cachedResponse) {
       res.status(200).json(cachedResponse);
@@ -275,6 +318,8 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
         .select({
           title: 1,
           price: 1,
+          originalPrice: 1,
+          status: 1,
           condition: 1,
           category: 1,
           meetAddress: 1,
@@ -284,7 +329,7 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
           createdAt: 1,
           images: { $slice: 1 }, // Only fetch the first image for the feed
         })
-        .populate('sellerId', 'name averageRating')
+        .populate('sellerId', 'name averageRating leavingDate isVerified')
         .sort(sortOption)
         .skip(skip)
         .limit(limitNum + 1)
@@ -331,7 +376,10 @@ export const getListingById = async (req: Request, res: Response): Promise<void>
     }
 
     const listing = await Listing.findById(req.params.id)
-      .populate('sellerId', 'name profileImage averageRating totalRatings totalItemsSold meetAddress phone createdAt')
+      .populate(
+        'sellerId',
+        'name profileImage averageRating totalRatings totalItemsSold meetAddress phone leavingDate isVerified createdAt'
+      )
       .lean();
 
     const sellerId = (listing?.sellerId as { _id?: unknown } | undefined)?._id?.toString();
@@ -342,7 +390,8 @@ export const getListingById = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const isExpired = listing.status === 'ACTIVE' && new Date(listing.expiresAt) <= new Date();
+    const isExpired =
+      (listing.status === 'ACTIVE' || listing.status === 'RESERVED') && new Date(listing.expiresAt) <= new Date();
 
     res.status(200).json({
       success: true,
@@ -414,6 +463,10 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
     if (fields.description !== undefined) listing.description = fields.description;
     if (fields.category !== undefined) listing.category = fields.category as typeof listing.category;
     if (fields.price !== undefined) listing.price = fields.price;
+    if (fields.originalPrice !== undefined) {
+      listing.originalPrice =
+        fields.originalPrice != null && fields.originalPrice > listing.price ? fields.originalPrice : undefined;
+    }
     if (fields.isNegotiable !== undefined) listing.isNegotiable = fields.isNegotiable;
     if (fields.condition !== undefined) listing.condition = fields.condition as typeof listing.condition;
     if (fields.meetAddress) listing.meetAddress = fields.meetAddress;
@@ -435,15 +488,15 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
 // ============================================================
 // PATCH /api/listings/:id/status
 //
-// Toggle listing status (ACTIVE ↔ SOLD). Owner only.
+// Set listing status (ACTIVE / RESERVED / SOLD). Owner only.
 // Keeps the seller's totalItemsSold counter in sync.
 // ============================================================
 export const updateListingStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status } = req.body;
 
-    if (status !== 'ACTIVE' && status !== 'SOLD') {
-      res.status(400).json({ success: false, message: 'Status must be ACTIVE or SOLD' });
+    if (status !== 'ACTIVE' && status !== 'SOLD' && status !== 'RESERVED') {
+      res.status(400).json({ success: false, message: 'Status must be ACTIVE, RESERVED or SOLD' });
       return;
     }
 
@@ -471,16 +524,17 @@ export const updateListingStatus = async (req: Request, res: Response): Promise<
     if (status === 'SOLD' && previousStatus !== 'SOLD') {
       await User.findByIdAndUpdate(listing.sellerId, { $inc: { totalItemsSold: 1 } });
     }
-    if (status === 'ACTIVE' && previousStatus === 'SOLD') {
+    if (status !== 'SOLD' && previousStatus === 'SOLD') {
       await User.findByIdAndUpdate(listing.sellerId, { $inc: { totalItemsSold: -1 } });
     }
 
     invalidateListingsCache();
 
+    const label = status === 'ACTIVE' ? 'available' : status.toLowerCase();
     res.status(200).json({
       success: true,
       data: listing,
-      message: `Listing marked as ${status.toLowerCase()}`,
+      message: `Listing marked as ${label}`,
     });
   } catch (error) {
     console.error('Update status error:', error);
@@ -520,6 +574,39 @@ export const deleteListing = async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     console.error('Delete listing error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete listing' });
+  }
+};
+
+// ============================================================
+// GET /api/listings/stats
+//
+// Headline numbers for the home page hero (cached 60s).
+// ============================================================
+export const getMarketplaceStats = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const cached = cache.get('marketplace_stats');
+    if (cached) {
+      res.status(200).json(cached);
+      return;
+    }
+
+    const now = new Date();
+    const liveFilter = { status: { $in: VISIBLE_STATUSES }, expiresAt: { $gt: now } };
+    const monthAgo = new Date(now.getTime() - THIRTY_DAYS_MS);
+
+    const [liveListings, sellers, soldThisMonth, freeItems] = await Promise.all([
+      Listing.countDocuments(liveFilter),
+      Listing.distinct('sellerId', liveFilter).then((ids) => ids.length),
+      Listing.countDocuments({ status: 'SOLD', updatedAt: { $gt: monthAgo } }),
+      Listing.countDocuments({ ...liveFilter, price: 0 }),
+    ]);
+
+    const body = { success: true, data: { liveListings, sellers, soldThisMonth, freeItems } };
+    cache.set('marketplace_stats', body);
+    res.status(200).json(body);
+  } catch (error) {
+    console.error('Get stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch stats' });
   }
 };
 
@@ -574,7 +661,7 @@ export const renewListing = async (req: Request, res: Response): Promise<void> =
     }
 
     listing.expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
-    listing.status = 'ACTIVE';
+    if (listing.status !== 'RESERVED') listing.status = 'ACTIVE';
     await listing.save();
     invalidateListingsCache();
 

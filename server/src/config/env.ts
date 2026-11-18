@@ -48,6 +48,16 @@ export const env = {
   // Client URL (for CORS)
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:3000',
 
+  // Comma-separated college email domains (e.g. "college.edu,students.college.edu").
+  // Users with these domains get a "Verified student" badge.
+  COLLEGE_EMAIL_DOMAINS: (process.env.COLLEGE_EMAIL_DOMAINS || '')
+    .split(',')
+    .map((d) => d.trim().toLowerCase().replace(/^@/, ''))
+    .filter(Boolean),
+
+  // If "true", ONLY college-domain emails can sign in.
+  RESTRICT_TO_COLLEGE_DOMAINS: process.env.RESTRICT_TO_COLLEGE_DOMAINS === 'true',
+
   // Comma-separated list of emails that get admin access (e.g. "a@x.com,b@x.com")
   ADMIN_EMAILS: (process.env.ADMIN_EMAILS || '')
     .split(',')

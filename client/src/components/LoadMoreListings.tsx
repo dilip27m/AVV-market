@@ -3,99 +3,73 @@
 import useSWRInfinite from 'swr/infinite';
 import { ListingCard } from './ListingCard';
 import { api } from '@/lib/api';
+import { ListingSummary } from '@/lib/types';
 
-const fetcher = (url: string) => api.get(url).then(res => res.data.data);
-
-interface LoadMoreProps {
-  initialListings: any[];
-  initialHasMore: boolean;
-  searchParams: {
-    category: string;
-    search: string;
-    sort: string;
-  };
+interface ListingsPage {
+  listings: ListingSummary[];
+  pagination: { hasMore: boolean };
 }
 
-export function LoadMoreListings({ initialListings, initialHasMore, searchParams }: LoadMoreProps) {
-  // SWR Infinite key function
-  const getKey = (pageIndex: number, previousPageData: any) => {
-    // If we've reached the end, return null
-    if (pageIndex === 0 && !initialHasMore) return null;
-    if (previousPageData && (!previousPageData.listings?.length || !previousPageData.pagination?.hasMore)) return null;
-    
-    // pageIndex is 0 for the first client fetch, but we already have initialListings from SSR!
-    // So the API page is pageIndex + 2 (since SSR loaded page 1)
-    const page = pageIndex + 2; 
+const fetcher = (url: string) => api.get<{ data: ListingsPage }>(url).then((res) => res.data.data);
 
-    const params = new URLSearchParams();
-    if (searchParams.category && searchParams.category !== 'All') params.set('category', searchParams.category);
-    if (searchParams.search) params.set('search', searchParams.search);
-    if (searchParams.sort) params.set('sort', searchParams.sort);
-    
-    // Add page parameter
-    params.set('page', page.toString());
-    
-    // Add cursor parameter if applicable
-    if (previousPageData && previousPageData.listings?.length > 0) {
-       const lastItem = previousPageData.listings[previousPageData.listings.length - 1];
-       params.set('cursor', lastItem._id);
-    } else if (pageIndex === 0 && initialListings.length > 0) {
-       // First client fetch, cursor is the last item of the SSR initialListings
-       const lastItem = initialListings[initialListings.length - 1];
-       params.set('cursor', lastItem._id);
-    }
+interface LoadMoreProps {
+  /** Last item already rendered by the server (used as the cursor). */
+  lastListingId?: string;
+  initialHasMore: boolean;
+  /** The active filters as a query string (without page/cursor). */
+  query: string;
+}
+
+export function LoadMoreListings({ lastListingId, initialHasMore, query }: LoadMoreProps) {
+  const getKey = (pageIndex: number, previousPageData: ListingsPage | null) => {
+    if (pageIndex === 0 && !initialHasMore) return null;
+    if (previousPageData && (!previousPageData.listings.length || !previousPageData.pagination.hasMore)) return null;
+
+    const params = new URLSearchParams(query);
+    // Server rendered page 1; page numbers are used for price sorts, cursors for date sorts
+    params.set('page', String(pageIndex + 2));
+    const cursor = previousPageData
+      ? previousPageData.listings[previousPageData.listings.length - 1]?._id
+      : lastListingId;
+    if (cursor) params.set('cursor', cursor);
 
     return `/listings?${params.toString()}`;
   };
 
-  const { data, isLoading, size, setSize, isValidating } = useSWRInfinite(getKey, fetcher, {
+  const { data, error, size, setSize, isValidating } = useSWRInfinite(getKey, fetcher, {
     revalidateFirstPage: false,
-    initialSize: 0, // Don't fetch anything until the user asks for more
+    initialSize: 0, // fetch only when the user asks for more
   });
 
-  const isLoadingMore = isLoading || (size > 0 && data && typeof data[size - 1] === "undefined");
-  
-  // Combine dynamically fetched items
-  const additionalListings = data ? data.flatMap(pageData => 
-    (pageData.listings || []).map((item: any) => ({
-      ...item,
-      seller: {
-        name: item.sellerId?.name || item.sellerName,
-        rating: item.sellerId?.averageRating || 0,
-      }
-    }))
-  ) : [];
-  
-  // The backend returns hasMore in pagination
-  const lastPageData = data ? data[data.length - 1] : null;
-  const hasMore = lastPageData ? lastPageData.pagination?.hasMore : initialHasMore;
+  const additional = data ? data.flatMap((page) => page.listings) : [];
+  const lastPage = data?.[data.length - 1];
+  const hasMore = lastPage ? lastPage.pagination.hasMore : initialHasMore;
+  const isLoadingMore = isValidating && size > (data?.length || 0);
 
-  if (additionalListings.length === 0 && !hasMore) return null;
+  if (additional.length === 0 && !hasMore) return null;
 
   return (
     <>
-      {additionalListings.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mt-6 pt-6">
-          {additionalListings.map((listing: any) => (
+      {additional.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6 mt-3 sm:mt-6">
+          {additional.map((listing) => (
             <ListingCard key={listing._id} listing={listing} />
           ))}
         </div>
       )}
-      
+
+      {error && <p className="text-center text-sm text-danger mt-6">Couldn&apos;t load more items. Try again.</p>}
+
       {hasMore && (
         <div className="flex justify-center mt-10">
-          <button 
-            onClick={() => setSize(size + 1)}
-            disabled={isLoadingMore || isValidating}
-            className="btn-secondary px-8 py-3 rounded-full flex items-center justify-center gap-2 font-medium transition-all hover:bg-bg-hover active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border border-border-subtle"
-          >
-            {isLoadingMore || isValidating ? (
+          <button onClick={() => setSize(size + 1)} disabled={isLoadingMore} className="btn-secondary px-8">
+            {isLoadingMore ? (
               <>
-                <div className="w-5 h-5 rounded-full border-2 border-text-muted border-t-text-primary animate-spin" />
+                <span className="w-4 h-4 rounded-full border-2 border-text-muted border-t-text-primary animate-spin" />
                 Loading...
               </>
             ) : (
-              'Load More Items'
+              'Load more'
             )}
           </button>
         </div>

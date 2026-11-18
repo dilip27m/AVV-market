@@ -3,12 +3,11 @@ import { User } from '../models/User';
 import { Listing } from '../models/Listing';
 import { isObjectId, normalizePhone } from '../utils/validate';
 import { invalidateListingsCache } from './listing.controller';
+import { serializeUser } from './auth.controller';
 
 // Fields that are safe to show to anyone (no email, phone, or wishlist)
-const PUBLIC_PROFILE_FIELDS = 'name profileImage meetAddress averageRating totalRatings totalItemsSold createdAt';
-
-// Fields the owner sees about themselves
-const PRIVATE_PROFILE_FIELDS = '-googleId -__v -wishlist';
+const PUBLIC_PROFILE_FIELDS =
+  'name profileImage meetAddress averageRating totalRatings totalItemsSold leavingDate isVerified createdAt';
 
 // ============================================================
 // GET /api/users/:id
@@ -31,7 +30,7 @@ export const getUserProfile = async (req: Request, res: Response): Promise<void>
 
     const activeListings = await Listing.countDocuments({
       sellerId: user._id,
-      status: 'ACTIVE',
+      status: { $in: ['ACTIVE', 'RESERVED'] },
       expiresAt: { $gt: new Date() },
     });
 
@@ -54,9 +53,9 @@ export const getUserProfile = async (req: Request, res: Response): Promise<void>
 // ============================================================
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, phone, meetAddress } = req.body;
+    const { name, phone, meetAddress, leavingDate } = req.body;
 
-    const updateData: Record<string, string> = {};
+    const updateData: Record<string, string | Date | null> = {};
 
     if (name !== undefined) {
       if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
@@ -83,11 +82,25 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       updateData.meetAddress = meetAddress.trim();
     }
 
+    if (leavingDate !== undefined) {
+      if (leavingDate === null || leavingDate === '') {
+        updateData.leavingDate = null;
+      } else {
+        const date = new Date(leavingDate);
+        const twoYears = Date.now() + 2 * 365 * 24 * 60 * 60 * 1000;
+        if (Number.isNaN(date.getTime()) || date.getTime() > twoYears) {
+          res.status(400).json({ success: false, message: 'Enter a valid leaving date' });
+          return;
+        }
+        updateData.leavingDate = date;
+      }
+    }
+
     const user = await User.findByIdAndUpdate(
       req.userId,
       { $set: updateData },
       { new: true, runValidators: true }
-    ).select(PRIVATE_PROFILE_FIELDS);
+    );
 
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found' });
@@ -96,19 +109,20 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 
     // Keep denormalized seller info on listings in sync
     const listingUpdate: Record<string, string> = {};
-    if (updateData.name) listingUpdate.sellerName = updateData.name;
-    if (updateData.phone !== undefined) listingUpdate.sellerPhone = updateData.phone;
+    if (typeof updateData.name === 'string') listingUpdate.sellerName = updateData.name;
+    if (typeof updateData.phone === 'string') listingUpdate.sellerPhone = updateData.phone;
     if (Object.keys(listingUpdate).length > 0) {
       await Listing.updateMany(
-        { sellerId: req.userId, status: { $in: ['ACTIVE', 'SOLD'] } },
+        { sellerId: req.userId, status: { $in: ['ACTIVE', 'RESERVED', 'SOLD'] } },
         { $set: listingUpdate }
       );
-      invalidateListingsCache();
     }
+    // Seller info (name, leaving date) appears on feed cards
+    invalidateListingsCache();
 
     res.status(200).json({
       success: true,
-      data: user,
+      data: serializeUser(user),
       message: 'Profile updated successfully',
     });
   } catch (error) {
@@ -131,10 +145,10 @@ export const getUserListings = async (req: Request, res: Response): Promise<void
 
     const listings = await Listing.find({
       sellerId: req.params.id,
-      status: 'ACTIVE',
+      status: { $in: ['ACTIVE', 'RESERVED'] },
       expiresAt: { $gt: new Date() },
     })
-      .select('title price condition category meetAddress sellerName sellerId createdAt isNegotiable images')
+      .select('title price originalPrice condition category meetAddress sellerName sellerId status createdAt isNegotiable images')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -200,7 +214,7 @@ export const getWishlist = async (req: Request, res: Response): Promise<void> =>
     const user = await User.findById(req.userId).populate({
       path: 'wishlist',
       match: { status: { $ne: 'DELETED' } },
-      select: 'title price images status expiresAt isNegotiable',
+      select: 'title price originalPrice images status expiresAt isNegotiable',
     });
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found' });
