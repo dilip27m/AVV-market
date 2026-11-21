@@ -6,7 +6,6 @@ import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { safeRedirectPath } from '@/lib/auth-tokens';
 import { Logo } from '@/components/Logo';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 const PERKS = [
   { icon: '🎓', title: 'Seniors sell, juniors save', text: 'Grab textbooks, cycles and hostel gear at a fraction of the price.' },
@@ -77,7 +76,6 @@ export default function LoginPage() {
       <div className="flex flex-col p-6 sm:p-10">
         <div className="flex items-center justify-between">
           <Logo />
-          <ThemeToggle />
         </div>
 
         <div className="flex-1 flex items-center justify-center py-12">

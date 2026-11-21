@@ -180,7 +180,7 @@ function ProfileContent() {
         )}
 
         {!user.phone && (
-          <div className="p-4 rounded-2xl border border-yellow-300 bg-yellow-50 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-300 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-4 rounded-2xl border border-yellow-300 bg-yellow-50 text-yellow-800 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <span>Add your WhatsApp number so buyers can contact you.</span>
             <Link href="/profile/edit" className="font-semibold underline whitespace-nowrap">Add number</Link>
           </div>
@@ -255,7 +255,7 @@ function ProfileContent() {
                     <button onClick={() => handleRenew(listing._id)} className="px-3 py-1.5 text-xs font-medium bg-brand-primary text-[var(--text-on-brand)] hover:bg-brand-hover rounded-lg transition-colors">
                       Renew
                     </button>
-                    <button onClick={() => handleDelete(listing._id)} className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors">
+                    <button onClick={() => handleDelete(listing._id)} className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded-lg transition-colors">
                       Delete
                     </button>
                   </div>

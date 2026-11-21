@@ -47,17 +47,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f6f6fa' },
-    { media: '(prefers-color-scheme: dark)', color: '#0b0b12' },
-  ],
+  themeColor: '#f6f6fa',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
 };
-
-// Runs before first paint: use the saved theme, else the system setting.
-const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
 
 export default function RootLayout({
   children,
@@ -65,10 +59,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning className={`${inter.variable} ${jakarta.variable} h-full antialiased`}>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
+    <html lang="en" className={`${inter.variable} ${jakarta.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-bg-base text-text-primary pb-safe-nav">
         <Providers>
           <Toaster

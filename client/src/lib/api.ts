@@ -1,7 +1,8 @@
 import axios, { AxiosError } from 'axios';
 import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './auth-tokens';
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const rawApiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').trim().replace(/\/+$/, '');
+export const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 
 // NOTE: no default Content-Type header on purpose.
 // axios picks the right one per request: JSON for objects, and

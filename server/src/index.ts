@@ -29,10 +29,24 @@ app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(compression());
 
-// CORS — only allow requests from the frontend
+// CORS — allow requests from the frontend (robust against trailing slashes & local dev)
+const configuredOrigin = env.CLIENT_URL.trim().replace(/\/+$/, '');
+const allowedOrigins = new Set([
+  configuredOrigin,
+  `https://${configuredOrigin.replace(/^https?:\/\//, '')}`,
+  'http://localhost:3000',
+]);
+
 app.use(
   cors({
-    origin: env.CLIENT_URL,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const cleanOrigin = origin.trim().replace(/\/+$/, '');
+      if (allowedOrigins.has(cleanOrigin)) {
+        return callback(null, origin);
+      }
+      return callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -68,7 +82,12 @@ const ratingReportLimiter = rateLimit({
   message: { success: false, message: 'Too many requests. Please try again later.' },
 });
 
-// --- Health Check ---
+// --- Ping / Keep-Alive / Health Check ---
+// Super-lightweight endpoint for uptime monitors and keep-alive pings (no DB query, 0ms latency)
+app.get(['/ping', '/api/ping'], (_req, res) => {
+  res.status(200).send('pong');
+});
+
 app.get('/api/health', (_req, res) => {
   res.status(200).json({
     success: true,
@@ -121,6 +140,20 @@ const startServer = async () => {
     ║   URL:  http://localhost:${env.PORT}         ║
     ╚═══════════════════════════════════════╝
     `);
+
+    // Automated keep-alive: pings the service every 14 minutes so Render's 15-minute idle timer never trips
+    const publicUrl = process.env.RENDER_EXTERNAL_URL || (env.NODE_ENV === 'production' ? 'https://avv-market.onrender.com' : null);
+    if (publicUrl) {
+      const FOURTEEN_MINUTES = 14 * 60 * 1000;
+      setInterval(async () => {
+        try {
+          const res = await fetch(`${publicUrl}/ping`);
+          console.log(`[keep-alive] Pinged ${publicUrl}/ping - status: ${res.status}`);
+        } catch (err) {
+          console.warn('[keep-alive] Ping failed:', err instanceof Error ? err.message : err);
+        }
+      }, FOURTEEN_MINUTES);
+    }
   });
 };
 

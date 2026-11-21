@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useRef, useEffect } from 'react';
 import { Logo } from './Logo';
-import { ThemeToggle } from './ThemeToggle';
 
 const NAV_LINKS = [
   { href: '/', label: 'Browse' },
@@ -73,7 +72,6 @@ export function Navbar() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <ThemeToggle />
 
           {isLoading ? (
             <span className="w-9 h-9 rounded-full skeleton" />
