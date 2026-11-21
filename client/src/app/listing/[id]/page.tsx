@@ -200,6 +200,41 @@ export default function ListingDetails() {
     }
   };
 
+  const handleAdminDelete = async () => {
+    const ok = await confirm({
+      title: 'Remove this listing as Admin?',
+      message: 'This listing will be immediately removed from the marketplace.',
+      confirmLabel: 'Remove Listing',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/listings/${id}/admin`);
+      toast.success('Listing removed by admin');
+      mutateListing({ ...listing, status: 'DELETED' }, false);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to remove listing'));
+    }
+  };
+
+  const handleAdminBlockSeller = async () => {
+    if (!sellerId) return;
+    const ok = await confirm({
+      title: `Block ${sellerName}'s account?`,
+      message: 'This seller will be immediately suspended and all their active listings removed from the marketplace.',
+      confirmLabel: 'Block Account',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/users/${sellerId}/block`, { reason: `Inappropriate listing: "${listing.title}"` });
+      toast.success(`${sellerName} has been blocked and listings removed`);
+      mutateListing({ ...listing, status: 'DELETED' }, false);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to block seller'));
+    }
+  };
+
   const handleShare = async () => {
     const url = window.location.href;
     const text = `${listing.title} for ${formatPrice(listing.price)} on CampusMart`;
@@ -249,6 +284,34 @@ export default function ListingDetails() {
       <Navbar />
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-4 sm:pt-8 pb-28 md:pb-12">
+        {user?.isAdmin && (
+          <div className="mb-6 p-4 rounded-2xl bg-danger-soft border border-danger/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-up">
+            <div className="flex items-center gap-2 text-danger">
+              <span className="font-bold text-sm">🛡️ Moderator Controls</span>
+              <span className="text-xs text-text-secondary">· Seller: {sellerName}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {listing.status !== 'DELETED' && (
+                <button
+                  type="button"
+                  onClick={handleAdminDelete}
+                  className="px-3.5 py-1.5 rounded-full bg-danger text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+                >
+                  Delete Inappropriate Listing
+                </button>
+              )}
+              {sellerId && sellerId !== user._id && (
+                <button
+                  type="button"
+                  onClick={handleAdminBlockSeller}
+                  className="px-3.5 py-1.5 rounded-full bg-danger-soft text-danger border border-danger/30 text-xs font-semibold hover:bg-danger hover:text-white transition-colors"
+                >
+                  Block Seller Account
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         <nav aria-label="Breadcrumb" className="text-sm text-text-muted flex items-center gap-2 mb-4 min-w-0">
           <Link href="/" className="hover:text-text-primary shrink-0">Home</Link>
           <span aria-hidden="true">›</span>

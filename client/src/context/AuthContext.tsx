@@ -23,6 +23,7 @@ export interface User {
   totalRatings: number;
   totalItemsSold: number;
   isAdmin?: boolean;
+  isBlocked?: boolean;
   isVerified?: boolean;
   leavingDate?: string | null;
   createdAt?: string;

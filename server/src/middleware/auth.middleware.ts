@@ -54,6 +54,15 @@ export const authMiddleware = async (
       return;
     }
 
+    if (user.isBlocked) {
+      res.status(403).json({
+        success: false,
+        message: 'Your account has been suspended by an administrator.',
+        code: 'ACCOUNT_BLOCKED',
+      });
+      return;
+    }
+
     req.user = user;
     req.userId = decoded.userId;
     next();

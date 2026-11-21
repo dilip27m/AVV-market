@@ -295,3 +295,115 @@ export const getWishlist = async (req: Request, res: Response): Promise<void> =>
     res.status(500).json({ success: false, message: 'Failed to fetch wishlist' });
   }
 };
+
+// ============================================================
+// POST /api/users/:id/block (Admin only)
+//
+// Blocks a user account, preventing them from logging in or using the API.
+// Automatically deactivates all active/reserved listings of the user and marks
+// open reports against them as reviewed.
+// ============================================================
+export const blockUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    if (!isObjectId(id)) {
+      res.status(400).json({ success: false, message: 'Invalid user ID' });
+      return;
+    }
+
+    if (id === req.userId) {
+      res.status(400).json({ success: false, message: 'You cannot block your own admin account' });
+      return;
+    }
+
+    const targetUser = await User.findById(id);
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    if (targetUser.role === 'admin') {
+      res.status(400).json({ success: false, message: 'Cannot block an admin account' });
+      return;
+    }
+
+    targetUser.isBlocked = true;
+    targetUser.blockedReason = (typeof reason === 'string' && reason.trim()) || 'Violated marketplace community policies';
+    targetUser.blockedAt = new Date();
+    await targetUser.save();
+
+    // Mark all this seller's listings as DELETED so they disappear from the marketplace
+    const userListings = await Listing.find({ sellerId: targetUser._id, status: { $ne: 'DELETED' } }).select('_id');
+    const listingIds = userListings.map((l) => l._id);
+
+    if (listingIds.length > 0) {
+      await Listing.updateMany({ _id: { $in: listingIds } }, { $set: { status: 'DELETED' } });
+      await Report.updateMany({ listingId: { $in: listingIds }, status: 'PENDING' }, { $set: { status: 'REVIEWED' } });
+    }
+
+    invalidateListingsCache();
+
+    res.status(200).json({
+      success: true,
+      message: `Account for ${targetUser.name} has been blocked and ${listingIds.length} listing(s) removed`,
+    });
+  } catch (error) {
+    console.error('Block user error:', error);
+    res.status(500).json({ success: false, message: 'Failed to block user' });
+  }
+};
+
+// ============================================================
+// POST /api/users/:id/unblock (Admin only)
+// ============================================================
+export const unblockUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!isObjectId(id)) {
+      res.status(400).json({ success: false, message: 'Invalid user ID' });
+      return;
+    }
+
+    const targetUser = await User.findById(id);
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    targetUser.isBlocked = false;
+    targetUser.blockedReason = '';
+    targetUser.blockedAt = undefined;
+    await targetUser.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Account for ${targetUser.name} has been unblocked`,
+    });
+  } catch (error) {
+    console.error('Unblock user error:', error);
+    res.status(500).json({ success: false, message: 'Failed to unblock user' });
+  }
+};
+
+// ============================================================
+// GET /api/users/admin/blocked (Admin only)
+// ============================================================
+export const getBlockedUsers = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const blockedUsers = await User.find({ isBlocked: true })
+      .select('name email profileImage blockedReason blockedAt createdAt')
+      .sort({ blockedAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: blockedUsers,
+    });
+  } catch (error) {
+    console.error('Get blocked users error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch blocked users' });
+  }
+};

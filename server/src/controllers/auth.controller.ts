@@ -42,6 +42,7 @@ export const serializeUser = (user: IUser) => ({
   leavingDate: user.leavingDate || null,
   isVerified: user.isVerified,
   isAdmin: isAdminUser(user),
+  isBlocked: !!user.isBlocked,
   createdAt: user.createdAt,
 });
 
@@ -97,6 +98,15 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
 
     let user = await User.findOne({ googleId });
     let isNewUser = false;
+
+    if (user && user.isBlocked) {
+      res.status(403).json({
+        success: false,
+        message: 'Your account has been suspended by an administrator.',
+        code: 'ACCOUNT_BLOCKED',
+      });
+      return;
+    }
 
     if (!user) {
       user = await User.create({
@@ -160,6 +170,15 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
 
     if (!user) {
       res.status(401).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    if (user.isBlocked) {
+      res.status(403).json({
+        success: false,
+        message: 'Your account has been suspended by an administrator.',
+        code: 'ACCOUNT_BLOCKED',
+      });
       return;
     }
 

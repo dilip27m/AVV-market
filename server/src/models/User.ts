@@ -18,6 +18,9 @@ export interface IUser extends Document {
   role: 'user' | 'admin';
   leavingDate?: Date;
   isVerified: boolean;
+  isBlocked: boolean;
+  blockedReason?: string;
+  blockedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -90,6 +93,18 @@ const userSchema = new Schema<IUser>(
     isVerified: {
       type: Boolean,
       default: false,
+    },
+    // Account moderation — blocked users cannot sign in or list items
+    isBlocked: {
+      type: Boolean,
+      default: false,
+    },
+    blockedReason: {
+      type: String,
+      default: '',
+    },
+    blockedAt: {
+      type: Date,
     },
   },
   {

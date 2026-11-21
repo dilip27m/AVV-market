@@ -74,7 +74,7 @@ export const reportListing = async (req: Request, res: Response): Promise<void> 
 export const getReports = async (req: Request, res: Response): Promise<void> => {
   try {
     const reports = await Report.find()
-      .populate('listingId', 'title category price status images sellerName')
+      .populate('listingId', 'title category price status images sellerName sellerId')
       .populate('reporterId', 'name email')
       .sort({ createdAt: -1 })
       .lean();

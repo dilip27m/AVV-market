@@ -7,8 +7,9 @@ import toast from 'react-hot-toast';
 import { Navbar, Avatar } from '@/components/Navbar';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingGridSkeleton } from '@/components/ListingCardSkeleton';
-import { api } from '@/lib/api';
+import { api, getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { formatPrice, leavingLabel } from '@/lib/format';
 import { ListingSummary } from '@/lib/types';
 
@@ -32,12 +33,31 @@ export default function SellerStorefront() {
   const params = useParams();
   const id = params.id as string;
   const { user } = useAuth();
+  const confirm = useConfirm();
 
   const { data: seller, error, isLoading } = useSWR<SellerProfile>(`/users/${id}`, fetcher);
   const { data: listings, isLoading: listingsLoading } = useSWR<ListingSummary[]>(`/users/${id}/listings`, fetcher);
 
   const isMe = user?._id === id;
   const leaving = leavingLabel(seller?.leavingDate);
+
+  const handleBlockSeller = async () => {
+    if (!seller) return;
+    const ok = await confirm({
+      title: `Block ${seller.name}'s account?`,
+      message: 'This user will be suspended from signing in, and ALL their active listings will be removed from the marketplace.',
+      confirmLabel: 'Block Account',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/users/${id}/block`, { reason: 'Policy violation' });
+      toast.success(`${seller.name} has been blocked and listings removed`);
+      window.location.href = '/admin';
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to block user'));
+    }
+  };
 
   // A ready-to-paste message for hostel WhatsApp groups
   const handleShare = async () => {
@@ -104,6 +124,14 @@ export default function SellerStorefront() {
                 </button>
                 {isMe && (
                   <Link href="/sell" className="btn-secondary text-sm">+ Add item</Link>
+                )}
+                {user?.isAdmin && !isMe && (
+                  <button
+                    onClick={handleBlockSeller}
+                    className="inline-flex items-center justify-center rounded-full bg-danger-soft text-danger border border-danger/30 text-xs font-semibold px-3 py-2 hover:bg-danger hover:text-white transition-colors"
+                  >
+                    Block Account
+                  </button>
                 )}
               </div>
             </div>
