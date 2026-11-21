@@ -242,7 +242,8 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     console.error('Create listing error:', error);
     deleteImages(imageUrls); // don't leave orphaned uploads behind
-    res.status(500).json({ success: false, message: 'Failed to create listing' });
+    const message = error instanceof Error && error.message ? error.message : 'Failed to create listing';
+    res.status(500).json({ success: false, message });
   }
 };
 
@@ -519,7 +520,8 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
     });
   } catch (error) {
     console.error('Update listing error:', error);
-    res.status(500).json({ success: false, message: 'Failed to update listing' });
+    const message = error instanceof Error && error.message ? error.message : 'Failed to update listing';
+    res.status(500).json({ success: false, message });
   }
 };
 

@@ -26,7 +26,7 @@ export const errorMiddleware = (
   // Upload errors (file too large, too many files, wrong type)
   if (err instanceof multer.MulterError) {
     const message =
-      err.code === 'LIMIT_FILE_SIZE' ? 'Each image must be under 5MB.'
+      err.code === 'LIMIT_FILE_SIZE' ? 'Each image must be under 10MB.'
       : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE' ? 'Too many images.'
       : 'Image upload failed.';
     res.status(400).json({ success: false, message });

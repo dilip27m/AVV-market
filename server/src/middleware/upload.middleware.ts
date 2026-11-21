@@ -16,7 +16,9 @@ const fileFilter = (
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ): void => {
-  if (file.mimetype.startsWith('image/')) {
+  const isImageMime = file.mimetype.startsWith('image/');
+  const isImageExt = /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i.test(file.originalname);
+  if (isImageMime || isImageExt) {
     cb(null, true);
   } else {
     cb(new Error('Only image files are allowed'));
@@ -27,7 +29,7 @@ export const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB
+    fileSize: 10 * 1024 * 1024, // 10MB per file
     files: 4, // max 4 files per request
   },
 });

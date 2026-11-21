@@ -76,6 +76,80 @@ export function ListingForm({ listing }: ListingFormProps) {
 
   const totalImages = photos.length;
 
+  /**
+   * Safely process & compress an image file for uploading.
+   * Uses browser-image-compression with useWebWorker: false (safe on all mobile browsers),
+   * falls back to Canvas resizing, and as a last resort falls back to the original file if <= 10MB.
+   */
+  const processImageSafe = async (file: File): Promise<File> => {
+    // 1. Try browser-image-compression without web workers (which fail in mobile webviews/PWAs)
+    try {
+      const compressed = await imageCompression(file, {
+        maxSizeMB: 1.0, // 1MB is quick to compress and well within server limits
+        maxWidthOrHeight: 1600,
+        useWebWorker: false, // critical for mobile Chrome & in-app browsers
+        initialQuality: 0.8,
+      });
+      if (compressed && compressed.size > 0) {
+        return new File([compressed], file.name.replace(/\.[^.]+$/, '.jpg'), {
+          type: compressed.type || 'image/jpeg',
+        });
+      }
+    } catch (err) {
+      console.warn('[imageCompression] Falling back to canvas resize:', err);
+    }
+
+    // 2. Fallback: Browser Canvas resize (works even if imageCompression threw)
+    try {
+      const img = document.createElement('img');
+      const url = URL.createObjectURL(file);
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Image decode failed'));
+        img.src = url;
+      });
+
+      const canvas = document.createElement('canvas');
+      let width = img.naturalWidth || img.width;
+      let height = img.naturalHeight || img.height;
+      const maxDim = 1600;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/jpeg', 0.82)
+        );
+        if (blob && blob.size > 0) {
+          const extName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+          return new File([blob], extName, { type: 'image/jpeg' });
+        }
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    } catch (canvasErr) {
+      console.warn('[Canvas resize] Fallback failed:', canvasErr);
+    }
+
+    // 3. Fallback: If original file is <= 10MB, use it directly!
+    if (file.size <= 10 * 1024 * 1024) {
+      return file;
+    }
+
+    throw new Error(`"${file.name}" is too large (${Math.round(file.size / 1024 / 1024)}MB). Please choose a photo under 10MB.`);
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     e.target.value = ''; // allow re-selecting the same file
@@ -90,18 +164,32 @@ export function ListingForm({ listing }: ListingFormProps) {
 
     setIsCompressing(true);
     try {
-      const compressed = await Promise.all(
-        accepted.map((file) =>
-          imageCompression(file, { maxSizeMB: 0.3, maxWidthOrHeight: 1280, useWebWorker: true })
-        )
-      );
-      setPhotos((prev) => [
-        ...prev,
-        ...compressed.map((file) => {
-          const src = URL.createObjectURL(file);
-          return { kind: 'new' as const, key: src, src, file };
-        }),
-      ]);
+      const results = await Promise.allSettled(accepted.map(processImageSafe));
+      const successfulPhotos: Photo[] = [];
+      let failCount = 0;
+
+      results.forEach((res, idx) => {
+        if (res.status === 'fulfilled') {
+          const processedFile = res.value;
+          const src = URL.createObjectURL(processedFile);
+          successfulPhotos.push({
+            kind: 'new' as const,
+            key: `${src}-${Date.now()}-${idx}`,
+            src,
+            file: processedFile,
+          });
+        } else {
+          failCount++;
+          console.error(`Failed to process ${accepted[idx]?.name}:`, res.reason);
+        }
+      });
+
+      if (successfulPhotos.length > 0) {
+        setPhotos((prev) => [...prev, ...successfulPhotos]);
+      }
+      if (failCount > 0) {
+        toast.error(`${failCount} photo${failCount > 1 ? 's' : ''} could not be loaded. Try another.`);
+      }
     } catch {
       toast.error('Could not process that image. Try a different photo.');
     } finally {
@@ -251,7 +339,7 @@ export function ListingForm({ listing }: ListingFormProps) {
                 )}
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,image/jpeg,image/png,image/webp,image/heic,image/heif"
                   multiple
                   className="sr-only"
                   onChange={handleImageUpload}
