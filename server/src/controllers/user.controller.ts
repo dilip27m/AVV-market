@@ -206,8 +206,10 @@ export const getUserListings = async (req: Request, res: Response): Promise<void
 
     const listings = await Listing.find({
       sellerId: req.params.id,
-      status: { $in: ['ACTIVE', 'RESERVED'] },
-      expiresAt: { $gt: new Date() },
+      $or: [
+        { status: { $in: ['ACTIVE', 'RESERVED'] }, expiresAt: { $gt: new Date() } },
+        { status: 'SOLD' },
+      ],
     })
       .select('title price originalPrice condition category meetAddress sellerName sellerId status createdAt isNegotiable images')
       .sort({ createdAt: -1 })

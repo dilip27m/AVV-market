@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { LogoMark } from './Logo';
 import { APP_NAME } from '@/lib/brand';
+import { BuyTeaButton } from './BuyTeaModal';
 
 export function Footer() {
   return (
     <footer className="w-full border-t border-border-subtle mt-16 py-10">
       <div className="max-w-7xl mx-auto px-4 md:px-6 grid gap-8 sm:grid-cols-[1fr_auto]">
-        <div className="space-y-3 max-w-sm">
+        <div className="space-y-4 max-w-sm">
           <div className="flex items-center gap-2">
             <LogoMark className="h-7 w-7" />
             <span className="font-[family-name:var(--font-display)] font-extrabold">{APP_NAME}</span>
@@ -14,6 +15,9 @@ export function Footer() {
           <p className="text-sm text-text-muted">
             Seniors pass it on, juniors save money, and less ends up in the bin. Built by students, for the campus.
           </p>
+          <div className="pt-1">
+            <BuyTeaButton />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-x-12 gap-y-2 text-sm">

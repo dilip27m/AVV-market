@@ -12,9 +12,10 @@ interface Filters {
   minPrice: string;
   maxPrice: string;
   free: string;
+  includeSold: string;
 }
 
-const EMPTY_EXTRAS = { condition: '', minPrice: '', maxPrice: '', free: '' };
+const EMPTY_EXTRAS = { condition: '', minPrice: '', maxPrice: '', free: '', includeSold: '' };
 
 const readFilters = (params: URLSearchParams): Filters => ({
   category: params.get('category') || '',
@@ -24,6 +25,7 @@ const readFilters = (params: URLSearchParams): Filters => ({
   minPrice: params.get('minPrice') || '',
   maxPrice: params.get('maxPrice') || '',
   free: params.get('free') || '',
+  includeSold: params.get('includeSold') || '',
 });
 
 const toQuery = (f: Filters) => {
@@ -32,6 +34,7 @@ const toQuery = (f: Filters) => {
   if (f.search.trim()) params.set('search', f.search.trim());
   if (f.sort && f.sort !== 'newest') params.set('sort', f.sort);
   if (f.condition) params.set('condition', f.condition);
+  if (f.includeSold) params.set('includeSold', '1');
   if (f.free) {
     params.set('free', '1');
   } else {
@@ -196,6 +199,19 @@ export function HomeFilters() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-border-subtle">
+            <p className="text-sm font-semibold">Availability</p>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!filters.includeSold}
+                onChange={(e) => set({ includeSold: e.target.checked ? '1' : '' })}
+                className="h-4 w-4 rounded"
+              />
+              Include sold items in results
+            </label>
           </div>
 
           <button onClick={() => setShowSheet(false)} className="btn-primary w-full">

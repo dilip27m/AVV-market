@@ -57,7 +57,9 @@ export default async function Home({
     ? 'Free stuff 🎁'
     : query.get('search')
       ? `Results for “${query.get('search')}”`
-      : query.get('category') || 'Fresh on campus';
+      : query.get('includeSold')
+        ? 'All items (including sold out)'
+        : query.get('category') || 'Fresh on campus';
 
   return (
     <div className="flex flex-col min-h-screen">

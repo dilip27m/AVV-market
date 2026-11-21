@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -34,12 +35,17 @@ export default function SellerStorefront() {
   const id = params.id as string;
   const { user } = useAuth();
   const confirm = useConfirm();
+  const [tab, setTab] = useState<'FOR_SALE' | 'SOLD'>('FOR_SALE');
 
   const { data: seller, error, isLoading } = useSWR<SellerProfile>(`/users/${id}`, fetcher);
   const { data: listings, isLoading: listingsLoading } = useSWR<ListingSummary[]>(`/users/${id}/listings`, fetcher);
 
   const isMe = user?._id === id;
   const leaving = leavingLabel(seller?.leavingDate);
+
+  const forSaleListings = (listings || []).filter((l) => l.status === 'ACTIVE' || l.status === 'RESERVED');
+  const soldListings = (listings || []).filter((l) => l.status === 'SOLD');
+  const displayedListings = tab === 'FOR_SALE' ? forSaleListings : soldListings;
 
   const handleBlockSeller = async () => {
     if (!seller) return;
@@ -138,13 +144,36 @@ export default function SellerStorefront() {
           )}
         </section>
 
-        <h2 className="text-xl font-extrabold mb-5">Items for sale</h2>
+        {/* Listing tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="inline-flex p-1 rounded-full bg-bg-panel border border-border-subtle">
+            <button
+              onClick={() => setTab('FOR_SALE')}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                tab === 'FOR_SALE' ? 'bg-text-primary text-bg-base' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              For Sale ({forSaleListings.length})
+            </button>
+            <button
+              onClick={() => setTab('SOLD')}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                tab === 'SOLD' ? 'bg-text-primary text-bg-base' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Sold Out ({soldListings.length})
+            </button>
+          </div>
+          <span className="text-sm text-text-muted">
+            {displayedListings.length} {displayedListings.length === 1 ? 'item' : 'items'}
+          </span>
+        </div>
 
         {listingsLoading ? (
           <ListingGridSkeleton count={4} />
-        ) : listings && listings.length > 0 ? (
+        ) : displayedListings.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
-            {listings.map((l) => (
+            {displayedListings.map((l) => (
               <ListingCard
                 key={l._id}
                 listing={l}
@@ -159,8 +188,10 @@ export default function SellerStorefront() {
           </div>
         ) : (
           <div className="py-20 text-center rounded-3xl border border-dashed border-border-subtle bg-bg-panel">
-            <p className="text-text-muted text-sm mb-4">Nothing for sale right now.</p>
-            {isMe && <Link href="/sell" className="btn-primary">Sell something</Link>}
+            <p className="text-text-muted text-sm mb-4">
+              {tab === 'FOR_SALE' ? 'Nothing for sale right now.' : 'No items sold yet.'}
+            </p>
+            {isMe && tab === 'FOR_SALE' && <Link href="/sell" className="btn-primary">Sell something</Link>}
           </div>
         )}
       </main>

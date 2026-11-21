@@ -253,11 +253,22 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
 
     const skip = cursor ? 0 : (pageNum - 1) * limitNum;
 
+    const includeSold = asString(req.query.includeSold) === '1' || asString(req.query.status) === 'SOLD';
+    const statusOnly = asString(req.query.status);
+
     // Build filter query
-    const filter: Record<string, unknown> = {
-      status: { $in: VISIBLE_STATUSES },
-      expiresAt: { $gt: new Date() },
-    };
+    const filter: Record<string, unknown> = {};
+    if (statusOnly === 'SOLD') {
+      filter.status = 'SOLD';
+    } else if (includeSold) {
+      filter.$or = [
+        { status: { $in: VISIBLE_STATUSES }, expiresAt: { $gt: new Date() } },
+        { status: 'SOLD' },
+      ];
+    } else {
+      filter.status = { $in: VISIBLE_STATUSES };
+      filter.expiresAt = { $gt: new Date() };
+    }
     if (category) filter.category = category;
     if (condition) filter.condition = condition;
     if (search) filter.$text = { $search: search };
