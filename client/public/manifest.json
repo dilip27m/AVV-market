@@ -1,24 +1,43 @@
 {
-  "name": "CampusMart",
+  "name": "CampusMart - Student Marketplace",
   "short_name": "CampusMart",
-  "description": "The campus marketplace. Seniors sell their stuff cheap, juniors grab great deals.",
+  "description": "The campus marketplace. Seniors pass it on cheap, juniors grab great deals.",
   "start_url": "/",
+  "id": "/",
   "display": "standalone",
   "background_color": "#f6f6fa",
   "theme_color": "#4F46E5",
   "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["shopping", "education"],
   "icons": [
     {
       "src": "/icon512_maskable.png",
-      "sizes": "512x512",
+      "sizes": "192x192 512x512",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
       "src": "/icon512_rounded.png",
-      "sizes": "512x512",
+      "sizes": "192x192 512x512",
       "type": "image/png",
       "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Sell an Item",
+      "short_name": "Sell",
+      "description": "Post something to sell on campus",
+      "url": "/sell",
+      "icons": [{ "src": "/icon512_rounded.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Wanted Board",
+      "short_name": "Wanted",
+      "description": "Post what you are looking for",
+      "url": "/wanted",
+      "icons": [{ "src": "/icon512_rounded.png", "sizes": "192x192" }]
     }
   ]
 }

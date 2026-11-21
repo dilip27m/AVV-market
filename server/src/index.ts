@@ -13,6 +13,7 @@ import ratingRoutes from './routes/rating.routes';
 import reportRoutes from './routes/report.routes';
 import commentRoutes from './routes/comment.routes';
 import wantedRoutes from './routes/wanted.routes';
+import feedbackRoutes from './routes/feedback.routes';
 
 import compression from 'compression';
 import helmet from 'helmet';
@@ -112,6 +113,7 @@ app.use('/api/ratings', ratingRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/wanted', wantedRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // --- 404 Handler ---
 app.use((_req, res) => {

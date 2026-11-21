@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useRef, useEffect } from 'react';
 import { Logo } from './Logo';
+import { InstallAppButton } from './InstallAppButton';
 
 const NAV_LINKS = [
   { href: '/', label: 'Browse' },
@@ -72,6 +73,7 @@ export function Navbar() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <InstallAppButton className="hidden md:inline-flex" />
 
           {isLoading ? (
             <span className="w-9 h-9 rounded-full skeleton" />
