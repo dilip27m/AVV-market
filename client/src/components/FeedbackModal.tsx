@@ -14,7 +14,13 @@ const FEEDBACK_OPTIONS: { label: string; value: FeedbackType; icon: string }[] =
   { label: 'General', value: 'OTHER', icon: '💬' },
 ];
 
-export function FeedbackButton({ className = '' }: { className?: string }) {
+export function FeedbackButton({
+  className = '',
+  label,
+}: {
+  className?: string;
+  label?: React.ReactNode;
+}) {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [type, setType] = useState<FeedbackType>('BUG');
@@ -85,7 +91,7 @@ export function FeedbackButton({ className = '' }: { className?: string }) {
         onClick={() => setIsOpen(true)}
         className={`inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer ${className}`}
       >
-        <span>🛠️ Report bug / Feedback</span>
+        {label || <span>🛠️ Report bug / Feedback</span>}
       </button>
 
       {isOpen && (
