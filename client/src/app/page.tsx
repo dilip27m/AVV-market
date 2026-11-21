@@ -4,7 +4,6 @@ import { Navbar } from '@/components/Navbar';
 import { ListingCard } from '@/components/ListingCard';
 import { HomeFilters } from '@/components/HomeFilters';
 import { LoadMoreListings } from '@/components/LoadMoreListings';
-import { FeedbackButton } from '@/components/FeedbackModal';
 import { ListingSummary } from '@/lib/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
@@ -190,95 +189,6 @@ export default async function Home({
               {soldFeed.listings.map((item) => (
                 <ListingCard key={item._id} listing={item} />
               ))}
-            </div>
-          </section>
-        )}
-
-        {/* Student Feedback & Testimonials */}
-        {!isFiltered && (
-          <section className="mt-16 pt-12 border-t border-border-subtle mb-12">
-            <div className="text-center max-w-2xl mx-auto mb-10 space-y-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-soft text-brand-primary text-xs font-semibold">
-                <span>💬</span>
-                <span>Community Voice &amp; Reviews</span>
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                What Students Say About CampusMart
-              </h2>
-              <p className="text-sm sm:text-base text-text-secondary">
-                Trusted by seniors, juniors, and hostellers trading safely on campus.
-              </p>
-            </div>
-
-            {/* Testimonials Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <div className="p-6 rounded-3xl bg-bg-panel border border-border-subtle space-y-4 [box-shadow:var(--shadow-card)] flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-1 text-yellow-400 text-sm">
-                    {'★'.repeat(5)}
-                  </div>
-                  <p className="text-sm text-text-secondary leading-relaxed italic">
-                    &ldquo;Listed my cycle at 9 AM and closed the deal before lunch right near the central canteen. Cash on the spot and zero commission!&rdquo;
-                  </p>
-                </div>
-                <div className="pt-3 border-t border-border-subtle flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-sm text-text-primary">Rohit S.</div>
-                    <div className="text-xs text-text-muted">Final Year B.Tech</div>
-                  </div>
-                  <span className="badge bg-success-soft text-success">Verified Seller</span>
-                </div>
-              </div>
-
-              <div className="p-6 rounded-3xl bg-bg-panel border border-border-subtle space-y-4 [box-shadow:var(--shadow-card)] flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-1 text-yellow-400 text-sm">
-                    {'★'.repeat(5)}
-                  </div>
-                  <p className="text-sm text-text-secondary leading-relaxed italic">
-                    &ldquo;Saved ₹1,800 on semester engineering textbooks and drawing kit. Met the senior right in the library lobby. Super safe.&rdquo;
-                  </p>
-                </div>
-                <div className="pt-3 border-t border-border-subtle flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-sm text-text-primary">Sneha P.</div>
-                    <div className="text-xs text-text-muted">2nd Year CSE</div>
-                  </div>
-                  <span className="badge bg-brand-soft text-brand-primary">Verified Buyer</span>
-                </div>
-              </div>
-
-              <div className="p-6 rounded-3xl bg-bg-panel border border-border-subtle space-y-4 [box-shadow:var(--shadow-card)] flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-1 text-yellow-400 text-sm">
-                    {'★'.repeat(5)}
-                  </div>
-                  <p className="text-sm text-text-secondary leading-relaxed italic">
-                    &ldquo;The lucky spin wheel discount is such a cool idea! Won 20% off on a study table for my hostel room and claimed it on WhatsApp.&rdquo;
-                  </p>
-                </div>
-                <div className="pt-3 border-t border-border-subtle flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-sm text-text-primary">Aravind M.</div>
-                    <div className="text-xs text-text-muted">1st Year Mechanical</div>
-                  </div>
-                  <span className="badge bg-amber-500/10 text-amber-700">Spin Winner</span>
-                </div>
-              </div>
-            </div>
-
-            {/* User Feedback & Suggestion Box */}
-            <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-brand-primary/10 via-brand-soft/40 to-bg-panel border border-brand-primary/20 flex flex-col sm:flex-row items-center justify-between gap-6 text-center sm:text-left">
-              <div className="space-y-1">
-                <h3 className="text-lg font-bold text-text-primary">Have ideas or feedback for CampusMart?</h3>
-                <p className="text-sm text-text-muted">
-                  Found a bug, want a new category, or have a suggestion? We build and improve this for our campus every week.
-                </p>
-              </div>
-              <FeedbackButton
-                className="btn-primary !text-sm px-6 py-3 shrink-0 !text-white shadow-md font-bold"
-                label={<span>✍️ Share Your Feedback</span>}
-              />
             </div>
           </section>
         )}
