@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CATEGORY_ICONS, ITEM_CONDITIONS, LISTING_CATEGORIES, SORT_OPTIONS } from '@/lib/constants';
 
@@ -125,6 +126,9 @@ export function HomeFilters() {
             <button onClick={() => set({ free: filters.free ? '' : '1', minPrice: '', maxPrice: '' })} aria-pressed={!!filters.free} className={pill(!!filters.free)}>
               <span aria-hidden="true">🎁</span> Free
             </button>
+            <Link href="/sold" className={pill(false)}>
+              <span aria-hidden="true">🏷️</span> Sold History
+            </Link>
             {LISTING_CATEGORIES.map((cat) => (
               <button key={cat} onClick={() => set({ category: filters.category === cat ? '' : cat })} aria-pressed={filters.category === cat} className={pill(filters.category === cat)}>
                 <span aria-hidden="true">{CATEGORY_ICONS[cat]}</span> {cat}

@@ -7,7 +7,7 @@ import { LoadMoreListings } from '@/components/LoadMoreListings';
 import { ListingSummary } from '@/lib/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-const PASSTHROUGH = ['category', 'search', 'sort', 'condition', 'minPrice', 'maxPrice', 'free'] as const;
+const PASSTHROUGH = ['category', 'search', 'sort', 'condition', 'minPrice', 'maxPrice', 'free', 'includeSold', 'status'] as const;
 
 interface Stats {
   liveListings: number;

@@ -31,6 +31,7 @@ export function Footer() {
             <Link href="/privacy" className="text-text-secondary hover:text-text-primary">Privacy</Link>
             <Link href="/wanted" className="text-text-secondary hover:text-text-primary">Wanted board</Link>
             <Link href="/saved" className="text-text-secondary hover:text-text-primary">Saved items</Link>
+            <Link href="/sold" className="text-text-secondary hover:text-text-primary">Sold history</Link>
           </div>
           <div className="pt-4 border-t border-border-subtle/50 mt-4">
             <FeedbackButton />

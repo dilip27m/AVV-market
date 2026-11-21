@@ -11,6 +11,7 @@ import { InstallAppButton } from './InstallAppButton';
 const NAV_LINKS = [
   { href: '/', label: 'Browse' },
   { href: '/wanted', label: 'Wanted' },
+  { href: '/sold', label: 'Sold Out' },
   { href: '/saved', label: 'Saved' },
 ];
 
