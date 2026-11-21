@@ -10,6 +10,7 @@ import {
   getMarketplaceStats,
   renewListing,
   adminDeleteListing,
+  spinListingWheel,
 } from '../controllers/listing.controller';
 import { authMiddleware, optionalAuth, requireAdmin } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
@@ -26,6 +27,7 @@ router.get('/stats', getMarketplaceStats);
 
 // Public
 router.get('/:id', optionalAuth, getListingById);
+router.post('/:id/spin', optionalAuth, spinListingWheel);
 
 // Protected
 router.post('/', authMiddleware, upload.array('images', 4), createListing);

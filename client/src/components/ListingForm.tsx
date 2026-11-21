@@ -10,6 +10,7 @@ import { api, getErrorMessage } from '@/lib/api';
 import { LISTING_CATEGORIES, ITEM_CONDITIONS, CAMPUS_SPOTS, CATEGORY_ICONS } from '@/lib/constants';
 import { discountPercent } from '@/lib/format';
 import { useAuth } from '@/context/AuthContext';
+import { SpinDiscountConfig } from '@/lib/types';
 
 const MAX_IMAGES = 4;
 
@@ -24,6 +25,7 @@ export interface ExistingListing {
   isNegotiable: boolean;
   meetAddress: string;
   images: string[];
+  spinDiscount?: SpinDiscountConfig;
 }
 
 interface ListingFormProps {
@@ -54,6 +56,9 @@ export function ListingForm({ listing }: ListingFormProps) {
   const [isNegotiable, setIsNegotiable] = useState(listing?.isNegotiable || false);
   const [sellerPhone, setSellerPhone] = useState(user?.phone || '');
   const [meetAddress, setMeetAddress] = useState(listing?.meetAddress || user?.meetAddress || '');
+  const [spinEnabled, setSpinEnabled] = useState(listing?.spinDiscount?.enabled || false);
+  const [minDiscount, setMinDiscount] = useState(listing?.spinDiscount?.minPercent ?? 10);
+  const [maxDiscount, setMaxDiscount] = useState(listing?.spinDiscount?.maxPercent ?? 30);
 
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -144,6 +149,14 @@ export function ListingForm({ listing }: ListingFormProps) {
       formData.append('originalPrice', originalPrice);
       formData.append('isNegotiable', String(isNegotiable));
       formData.append('meetAddress', meetAddress.trim());
+      formData.append(
+        'spinDiscount',
+        JSON.stringify({
+          enabled: spinEnabled,
+          minPercent: Number(minDiscount),
+          maxPercent: Number(maxDiscount),
+        })
+      );
       if (!isEdit) formData.append('sellerPhone', phoneDigits);
       // New files are uploaded in this order; `imageOrder` tells the server how to
       // interleave them with the photos it already has ("new:0" = first new file).
@@ -363,6 +376,119 @@ export function ListingForm({ listing }: ListingFormProps) {
               </label>
             </div>
           </div>
+        </div>
+
+        {/* Spin the Wheel Discount (Optional / Clearance / Damaged) */}
+        <div className="panel-card space-y-5 border-2 border-brand-primary/20 bg-brand-primary/[0.02]">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🎡</span>
+                <h2 className="text-lg font-semibold text-text-primary">Spin the Wheel Discount</h2>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary font-medium">Optional</span>
+              </div>
+              <p className="text-xs sm:text-sm text-text-muted">
+                Got a damaged, clearance, or hard-to-sell item? Let buyers spin a lucky wheel on your listing to win a discount within your custom percentage range!
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+              <input
+                type="checkbox"
+                checked={spinEnabled}
+                onChange={(e) => setSpinEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-primary"></div>
+            </label>
+          </div>
+
+          {!spinEnabled ? (
+            <p className="text-xs text-text-muted italic bg-bg-base/60 p-3 rounded-xl border border-border-subtle">
+              Disabled (standard price). If your item is in normal condition, keep this off to sell at full price without discounts.
+            </p>
+          ) : (
+            <div className="space-y-4 pt-2 border-t border-border-subtle animate-fade-up">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="minDiscount" className="text-sm font-medium text-text-primary flex justify-between">
+                    <span>Minimum Discount (Lower Bound)</span>
+                    <span className="font-bold text-brand-primary">{minDiscount}% OFF</span>
+                  </label>
+                  <input
+                    id="minDiscount"
+                    type="range"
+                    min="5"
+                    max="80"
+                    step="5"
+                    value={minDiscount}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setMinDiscount(val);
+                      if (val > maxDiscount) setMaxDiscount(val);
+                    }}
+                    className="w-full accent-[var(--brand-primary)]"
+                  />
+                  <div className="flex justify-between text-[11px] text-text-muted">
+                    <span>5%</span>
+                    <span>80%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="maxDiscount" className="text-sm font-medium text-text-primary flex justify-between">
+                    <span>Maximum Discount (Upper Bound)</span>
+                    <span className="font-bold text-brand-primary">{maxDiscount}% OFF</span>
+                  </label>
+                  <input
+                    id="maxDiscount"
+                    type="range"
+                    min={minDiscount}
+                    max="90"
+                    step="5"
+                    value={maxDiscount}
+                    onChange={(e) => setMaxDiscount(Number(e.target.value))}
+                    className="w-full accent-[var(--brand-primary)]"
+                  />
+                  <div className="flex justify-between text-[11px] text-text-muted">
+                    <span>{minDiscount}%</span>
+                    <span>90%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Price Preview Card */}
+              {Number(price) > 0 ? (
+                <div className="bg-bg-panel p-3.5 rounded-2xl border border-border-subtle space-y-2">
+                  <div className="text-xs font-semibold text-text-secondary flex items-center gap-1.5">
+                    <span>✨ Live Wheel Outcome for ₹{Number(price).toLocaleString('en-IN')}:</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-center">
+                    <div className="p-2.5 rounded-xl bg-bg-hover">
+                      <div className="text-[11px] text-text-muted">Min Discount ({minDiscount}%)</div>
+                      <div className="text-base font-bold text-text-primary">
+                        ₹{Math.max(0, Math.round(Number(price) * (1 - minDiscount / 100))).toLocaleString('en-IN')}
+                      </div>
+                      <div className="text-[10px] text-success font-medium">Buyer saves ₹{Math.round(Number(price) * (minDiscount / 100))}</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-bg-hover">
+                      <div className="text-[11px] text-text-muted">Max Discount ({maxDiscount}%)</div>
+                      <div className="text-base font-bold text-brand-primary">
+                        ₹{Math.max(0, Math.round(Number(price) * (1 - maxDiscount / 100))).toLocaleString('en-IN')}
+                      </div>
+                      <div className="text-[10px] text-success font-medium">Buyer saves ₹{Math.round(Number(price) * (maxDiscount / 100))}</div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-text-muted">
+                    Buyers spin the wheel on your item page. The won discount &amp; verification code are prefilled in their WhatsApp message to you.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-text-muted">
+                  Enter an item price above to preview the discount calculations.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Contact */}

@@ -30,7 +30,7 @@ export const CATEGORY_ICONS: Record<ListingCategory, string> = {
   Others: '✨',
 };
 
-export const ITEM_CONDITIONS = ['New', 'Like New', 'Used - Good', 'Used - Fair'] as const;
+export const ITEM_CONDITIONS = ['New', 'Like New', 'Used - Good', 'Used - Fair', 'Damaged / For Parts'] as const;
 
 export const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest first' },

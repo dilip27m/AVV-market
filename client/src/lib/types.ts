@@ -2,6 +2,12 @@
 
 export type ListingStatus = 'ACTIVE' | 'RESERVED' | 'SOLD' | 'EXPIRED' | 'DELETED';
 
+export interface SpinDiscountConfig {
+  enabled: boolean;
+  minPercent: number;
+  maxPercent: number;
+}
+
 export interface SellerSummary {
   _id: string;
   name: string;
@@ -23,6 +29,7 @@ export interface ListingSummary {
   sellerName: string;
   status?: ListingStatus;
   isNegotiable?: boolean;
+  spinDiscount?: SpinDiscountConfig;
   createdAt?: string;
   /** Populated seller (feed) or a bare id (some endpoints) */
   sellerId?: SellerSummary | string;

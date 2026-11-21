@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -10,12 +10,13 @@ import { ImageGallery } from '@/components/ImageGallery';
 import { ReportDialog } from '@/components/ReportDialog';
 import { OfferDialog } from '@/components/OfferDialog';
 import { ListingCard } from '@/components/ListingCard';
+import { SpinWheelModal, SpinResult } from '@/components/SpinWheelModal';
 import { api, getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useWishlist } from '@/lib/useWishlist';
 import { discountPercent, formatPrice, leavingLabel, timeAgo, whatsAppLink } from '@/lib/format';
-import { ListingStatus, ListingSummary } from '@/lib/types';
+import { ListingStatus, ListingSummary, SpinDiscountConfig } from '@/lib/types';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data.data);
 
@@ -45,6 +46,7 @@ interface ListingDetail {
   sellerName: string;
   sellerPhone: string;
   meetAddress: string;
+  spinDiscount?: SpinDiscountConfig;
   status: ListingStatus;
   expiresAt: string;
   createdAt: string;
@@ -79,6 +81,21 @@ export default function ListingDetails() {
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isOfferOpen, setIsOfferOpen] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isSpinModalOpen, setIsSpinModalOpen] = useState(false);
+  const [spinResult, setSpinResult] = useState<SpinResult | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && id) {
+      try {
+        const saved = localStorage.getItem(`spin_${id}`);
+        if (saved) {
+          setSpinResult(JSON.parse(saved));
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [id]);
 
   const { data: listing, error, isLoading, mutate: mutateListing } = useSWR<ListingDetail>(`/listings/${id}`, fetcher);
   const { data: comments = [], mutate: mutateComments } = useSWR<Comment[]>(`/comments/${id}`, fetcher);
@@ -139,7 +156,9 @@ export default function ListingDetails() {
 
   const chatLink = whatsAppLink(
     contactPhone,
-    `Hi ${sellerName}! Is your "${listing.title}" (${formatPrice(listing.price)}) on CampusMart still available?`
+    spinResult
+      ? `Hi ${sellerName}! I spun the lucky wheel for "${listing.title}" and won ${spinResult.wonPercent}% OFF! Deal price: ₹${spinResult.discountedPrice} (Verification Code: ${spinResult.code}). Is it available?`
+      : `Hi ${sellerName}! Is your "${listing.title}" (${formatPrice(listing.price)}) on CampusMart still available?`
   );
 
   const handleAddComment = async (e: React.FormEvent) => {
@@ -327,7 +346,7 @@ export default function ListingDetails() {
 
             {/* Title block (mobile shows it here, desktop in the sidebar) */}
             <div className="md:hidden space-y-2">
-              <PriceBlock listing={listing} discount={discount} />
+              <PriceBlock listing={listing} discount={discount} spinResult={spinResult} />
               <h1 className="text-2xl font-extrabold leading-tight">{listing.title}</h1>
               <MetaChips listing={listing} leaving={leaving} />
             </div>
@@ -414,10 +433,42 @@ export default function ListingDetails() {
           <aside className="space-y-5 md:sticky md:top-24">
             <div className="panel-card space-y-5">
               <div className="hidden md:block space-y-2">
-                <PriceBlock listing={listing} discount={discount} />
+                <PriceBlock listing={listing} discount={discount} spinResult={spinResult} />
                 <h1 className="text-2xl font-extrabold leading-tight">{listing.title}</h1>
                 <MetaChips listing={listing} leaving={leaving} />
               </div>
+
+              {/* Spin the Wheel Discount Box */}
+              {listing.spinDiscount?.enabled && !isUnavailable && listing.price > 0 && (
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-indigo-500/5 border border-amber-500/25 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl animate-bounce">🎡</span>
+                    <div>
+                      <h3 className="font-bold text-sm text-text-primary">
+                        {spinResult ? `You Won ${spinResult.wonPercent}% OFF!` : 'Lucky Wheel Discount'}
+                      </h3>
+                      <p className="text-xs text-text-muted">
+                        {isOwner
+                          ? `Active for buyers: ${listing.spinDiscount.minPercent}%–${listing.spinDiscount.maxPercent}% off`
+                          : spinResult
+                          ? `Deal price: ${formatPrice(spinResult.discountedPrice)} (Code: ${spinResult.code})`
+                          : `Win ${listing.spinDiscount.minPercent}% to ${listing.spinDiscount.maxPercent}% OFF!`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {!isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => setIsSpinModalOpen(true)}
+                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                    >
+                      <span>🎡</span>
+                      <span>{spinResult ? 'View Won Deal / Spin Code' : 'Spin the Wheel to Win!'}</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {isUnavailable && !isOwner && (
                 <p className="text-center font-semibold rounded-2xl bg-bg-hover py-3">
@@ -546,11 +597,41 @@ export default function ListingDetails() {
           style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom))' }}
         >
           <div className="shrink-0">
-            <p className={`text-lg font-extrabold leading-none ${listing.price <= 0 ? 'text-success' : ''}`}>{formatPrice(listing.price)}</p>
-            {listing.isNegotiable && <p className="text-[11px] text-text-muted">Negotiable</p>}
+            <p className={`text-lg font-extrabold leading-none ${spinResult ? 'text-success' : listing.price <= 0 ? 'text-success' : ''}`}>
+              {formatPrice(spinResult ? spinResult.discountedPrice : listing.price)}
+            </p>
+            {spinResult ? (
+              <p className="text-[10px] text-amber-600 font-bold">🎡 {spinResult.wonPercent}% OFF</p>
+            ) : listing.spinDiscount?.enabled ? (
+              <button
+                type="button"
+                onClick={() => setIsSpinModalOpen(true)}
+                className="text-[10px] text-amber-600 font-bold underline flex items-center gap-0.5"
+              >
+                <span>🎡</span> Spin wheel
+              </button>
+            ) : listing.isNegotiable ? (
+              <p className="text-[11px] text-text-muted">Negotiable</p>
+            ) : null}
           </div>
           <div className="flex-1">{contactButtons(true)}</div>
         </div>
+      )}
+
+      {listing.spinDiscount?.enabled && (
+        <SpinWheelModal
+          open={isSpinModalOpen}
+          onClose={() => setIsSpinModalOpen(false)}
+          listingId={listing._id}
+          listingTitle={listing.title}
+          listingPrice={listing.price}
+          sellerPhone={contactPhone}
+          sellerName={sellerName}
+          minPercent={listing.spinDiscount.minPercent}
+          maxPercent={listing.spinDiscount.maxPercent}
+          existingResult={spinResult}
+          onWon={(res) => setSpinResult(res)}
+        />
       )}
 
       <ReportDialog listingId={listing._id} open={isReportOpen} onClose={() => setIsReportOpen(false)} />
@@ -568,8 +649,41 @@ export default function ListingDetails() {
   );
 }
 
-function PriceBlock({ listing, discount }: { listing: ListingDetail; discount: number | null }) {
+function PriceBlock({
+  listing,
+  discount,
+  spinResult,
+}: {
+  listing: ListingDetail;
+  discount: number | null;
+  spinResult?: SpinResult | null;
+}) {
   const isFree = listing.price <= 0;
+
+  if (spinResult && !isFree) {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <span className="text-3xl font-extrabold font-[family-name:var(--font-display)] text-success">
+            {formatPrice(spinResult.discountedPrice)}
+          </span>
+          <span className="text-text-muted line-through text-lg">
+            {formatPrice(listing.price)}
+          </span>
+          <span className="badge bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold">
+            🎡 {spinResult.wonPercent}% OFF UNLOCKED
+          </span>
+        </div>
+        <div className="text-xs text-text-muted flex items-center gap-1.5">
+          <span>Verified Spin Code:</span>
+          <span className="font-mono font-semibold text-text-primary px-1.5 py-0.5 rounded bg-bg-hover">
+            {spinResult.code}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-baseline gap-3 flex-wrap">
       <span className={`text-3xl font-extrabold font-[family-name:var(--font-display)] ${isFree ? 'text-success' : 'text-text-primary'}`}>
@@ -580,6 +694,11 @@ function PriceBlock({ listing, discount }: { listing: ListingDetail; discount: n
           <span className="text-text-muted line-through">₹{listing.originalPrice.toLocaleString('en-IN')}</span>
           <span className="badge bg-success-soft text-success">{discount}% off</span>
         </>
+      )}
+      {listing.spinDiscount?.enabled && !isFree && (
+        <span className="badge bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold">
+          🎡 Spin {listing.spinDiscount.minPercent}–{listing.spinDiscount.maxPercent}% OFF
+        </span>
       )}
       {listing.isNegotiable && !isFree && <span className="chip">Negotiable</span>}
     </div>

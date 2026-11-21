@@ -60,6 +60,11 @@ type ListingFields = {
   isNegotiable?: boolean;
   condition?: string;
   meetAddress?: string;
+  spinDiscount?: {
+    enabled: boolean;
+    minPercent: number;
+    maxPercent: number;
+  };
 };
 
 const validateListingBody = (
@@ -129,6 +134,25 @@ const validateListingBody = (
     fields.meetAddress = body.meetAddress.trim();
   }
 
+  if (body.spinDiscount !== undefined) {
+    let spinConfig = body.spinDiscount;
+    if (typeof spinConfig === 'string') {
+      try {
+        spinConfig = JSON.parse(spinConfig);
+      } catch {
+        spinConfig = null;
+      }
+    }
+    if (spinConfig && typeof spinConfig === 'object') {
+      const enabled = (spinConfig as any).enabled === true || (spinConfig as any).enabled === 'true';
+      const minPercent = Math.max(5, Math.min(85, parseInt(String((spinConfig as any).minPercent || 10), 10)));
+      const maxPercent = Math.max(minPercent, Math.min(90, parseInt(String((spinConfig as any).maxPercent || 30), 10)));
+      fields.spinDiscount = { enabled, minPercent, maxPercent };
+    } else {
+      fields.spinDiscount = { enabled: false, minPercent: 10, maxPercent: 30 };
+    }
+  }
+
   if (
     fields.originalPrice != null &&
     fields.price !== undefined &&
@@ -196,6 +220,7 @@ export const createListing = async (req: Request, res: Response): Promise<void> 
       sellerName: user.name,
       sellerPhone,
       meetAddress,
+      spinDiscount: fields.spinDiscount || { enabled: false, minPercent: 10, maxPercent: 30 },
       status: 'ACTIVE',
     });
 
@@ -325,6 +350,7 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
           sellerName: 1,
           sellerId: 1,
           isNegotiable: 1,
+          spinDiscount: 1,
           createdAt: 1,
           images: { $slice: 1 }, // Only fetch the first image for the feed
         })
@@ -471,6 +497,9 @@ export const updateListing = async (req: Request, res: Response): Promise<void> 
     if (fields.isNegotiable !== undefined) listing.isNegotiable = fields.isNegotiable;
     if (fields.condition !== undefined) listing.condition = fields.condition as typeof listing.condition;
     if (fields.meetAddress) listing.meetAddress = fields.meetAddress;
+    if (fields.spinDiscount !== undefined) {
+      listing.spinDiscount = fields.spinDiscount;
+    }
 
     try {
       await listing.save();
@@ -722,3 +751,72 @@ export const adminDeleteListing = async (req: Request, res: Response): Promise<v
     res.status(500).json({ success: false, message: 'Failed to delete listing' });
   }
 };
+
+// ============================================================
+// POST /api/listings/:id/spin
+//
+// Spin the wheel to get a lucky discount within seller's bounds
+// ============================================================
+export const spinListingWheel = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isObjectId(req.params.id)) {
+      res.status(404).json({ success: false, message: 'Listing not found' });
+      return;
+    }
+
+    const listing = await Listing.findById(req.params.id);
+    if (!listing || listing.status !== 'ACTIVE' || new Date(listing.expiresAt) <= new Date()) {
+      res.status(404).json({ success: false, message: 'Listing is not available for spin' });
+      return;
+    }
+
+    if (!listing.spinDiscount?.enabled) {
+      res.status(400).json({ success: false, message: 'Spin the wheel discount is not enabled for this item' });
+      return;
+    }
+
+    if (listing.price <= 0) {
+      res.status(400).json({ success: false, message: 'Item is already free' });
+      return;
+    }
+
+    const min = Math.max(5, Math.min(85, listing.spinDiscount.minPercent || 10));
+    const max = Math.max(min, Math.min(90, listing.spinDiscount.maxPercent || 30));
+
+    // Generate 6 slices evenly spaced between min and max
+    const numSlices = 6;
+    const slices: number[] = [];
+    if (min === max) {
+      for (let i = 0; i < numSlices; i++) slices.push(min);
+    } else {
+      for (let i = 0; i < numSlices; i++) {
+        const val = Math.round(min + ((max - min) * i) / (numSlices - 1));
+        slices.push(val);
+      }
+    }
+
+    // Pick random slice
+    const sliceIndex = Math.floor(Math.random() * slices.length);
+    const wonPercent = slices[sliceIndex];
+    const discountAmount = Math.round((listing.price * wonPercent) / 100);
+    const discountedPrice = Math.max(0, listing.price - discountAmount);
+    const code = `SPIN-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${wonPercent}`;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        listingId: listing._id,
+        wonPercent,
+        sliceIndex,
+        slices,
+        originalPrice: listing.price,
+        discountedPrice,
+        code,
+      },
+    });
+  } catch (error) {
+    console.error('Spin wheel error:', error);
+    res.status(500).json({ success: false, message: 'Failed to spin wheel' });
+  }
+};
+

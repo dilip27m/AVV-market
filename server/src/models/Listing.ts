@@ -25,7 +25,7 @@ export const LISTING_STATUS = ['ACTIVE', 'RESERVED', 'SOLD', 'EXPIRED', 'DELETED
 export const VISIBLE_STATUSES = ['ACTIVE', 'RESERVED'] as const;
 export type ListingStatus = (typeof LISTING_STATUS)[number];
 
-export const ITEM_CONDITIONS = ['New', 'Like New', 'Used - Good', 'Used - Fair'] as const;
+export const ITEM_CONDITIONS = ['New', 'Like New', 'Used - Good', 'Used - Fair', 'Damaged / For Parts'] as const;
 export type ItemCondition = (typeof ITEM_CONDITIONS)[number];
 
 // ============================================================
@@ -45,6 +45,11 @@ export interface IListing extends Document {
   sellerName: string;
   sellerPhone: string;
   meetAddress: string;
+  spinDiscount?: {
+    enabled: boolean;
+    minPercent: number;
+    maxPercent: number;
+  };
   status: ListingStatus;
   expiresAt: Date;
   createdAt: Date;
@@ -110,6 +115,24 @@ const listingSchema = new Schema<IListing>(
       enum: {
         values: ITEM_CONDITIONS,
         message: '{VALUE} is not a valid condition',
+      },
+    },
+    spinDiscount: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+      minPercent: {
+        type: Number,
+        default: 10,
+        min: 5,
+        max: 85,
+      },
+      maxPercent: {
+        type: Number,
+        default: 30,
+        min: 5,
+        max: 90,
       },
     },
     // Denormalized seller info for performance (avoids populating on every card)

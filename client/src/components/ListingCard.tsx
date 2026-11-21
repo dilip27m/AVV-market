@@ -65,6 +65,11 @@ export function ListingCard({ listing, seller: sellerOverride, priority = false 
                 {discount}% off
               </span>
             )}
+            {listing.spinDiscount?.enabled && !isSold && !isReserved && !isFree && (
+              <span className="badge bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold flex items-center gap-1 shadow-sm">
+                <span>🎡</span> Spin {listing.spinDiscount.minPercent}–{listing.spinDiscount.maxPercent}% off
+              </span>
+            )}
           </div>
 
           {leaving && (
