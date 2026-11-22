@@ -55,25 +55,23 @@ export function ListingCard({ listing, seller: sellerOverride, priority = false 
             </div>
           )}
 
-          {/* Top-left badges */}
-          <div className="absolute top-2.5 left-2.5 flex flex-col items-start gap-1.5">
-            {isSold && <span className="badge bg-black/80 text-white">Sold</span>}
-            {isReserved && <span className="badge bg-black/80 text-white">Reserved</span>}
-            {isFree && !isReserved && !isSold && <span className="badge bg-success text-white">Free</span>}
-            {discount && discount >= 10 && !isFree && !isSold && (
+          {/* Top-left badges (only 1 primary status badge so photo stays clear) */}
+          <div className="absolute top-2.5 left-2.5 flex flex-col items-start gap-1.5 pointer-events-none">
+            {isSold ? (
+              <span className="badge bg-black/80 text-white font-bold">Sold</span>
+            ) : isReserved ? (
+              <span className="badge bg-black/80 text-white font-bold">Reserved</span>
+            ) : isFree ? (
+              <span className="badge bg-success text-white font-bold">Free</span>
+            ) : discount && discount >= 10 ? (
               <span className="badge bg-brand-primary" style={{ color: 'var(--text-on-brand)' }}>
                 {discount}% off
               </span>
-            )}
-            {listing.spinDiscount?.enabled && !isSold && !isReserved && !isFree && (
-              <span className="badge bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold flex items-center gap-1 shadow-sm">
-                <span>🎡</span> Spin {listing.spinDiscount.minPercent}–{listing.spinDiscount.maxPercent}% off
-              </span>
-            )}
+            ) : null}
           </div>
 
-          {leaving && (
-            <span className="absolute bottom-2.5 left-2.5 badge bg-warning-soft text-warning backdrop-blur-md normal-case tracking-normal font-semibold border border-warning/20">
+          {leaving && !isSold && (
+            <span className="absolute bottom-2 left-2 text-[10px] font-medium px-2 py-0.5 rounded-full bg-black/60 text-amber-300 backdrop-blur-md border border-white/10">
               ⏳ {leaving}
             </span>
           )}
@@ -89,6 +87,14 @@ export function ListingCard({ listing, seller: sellerOverride, priority = false 
               <span className="text-xs text-text-muted line-through">₹{listing.originalPrice.toLocaleString('en-IN')}</span>
             )}
           </div>
+
+          {/* Spin Wheel Promo Tag (neatly under price, off the photo) */}
+          {listing.spinDiscount?.enabled && !isSold && !isReserved && !isFree && (
+            <div className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg w-fit">
+              <span>🎡</span>
+              <span>Spin {listing.spinDiscount.minPercent}–{listing.spinDiscount.maxPercent}% off</span>
+            </div>
+          )}
 
           <h3 className="text-sm font-medium text-text-secondary line-clamp-2 group-hover:text-text-primary transition-colors font-sans tracking-normal">
             {listing.title}
