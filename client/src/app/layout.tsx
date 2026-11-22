@@ -5,6 +5,7 @@ import { Footer } from '@/components/Footer';
 import { BottomNav } from '@/components/BottomNav';
 import { Providers } from './providers';
 import { Toaster } from 'react-hot-toast';
+import { Analytics } from '@vercel/analytics/next';
 import { APP_NAME, APP_DESCRIPTION, APP_TAGLINE, SITE_URL } from '@/lib/brand';
 
 const inter = Inter({
@@ -80,6 +81,7 @@ export default function RootLayout({
           <Footer />
           <BottomNav />
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
