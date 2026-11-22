@@ -3,8 +3,11 @@ import { Suspense } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { ListingCard } from '@/components/ListingCard';
 import { HomeFilters } from '@/components/HomeFilters';
-import { LoadMoreListings } from '@/components/LoadMoreListings';
+import { HomeFeed } from '@/components/HomeFeed';
 import { ListingSummary } from '@/lib/types';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 const PASSTHROUGH = ['category', 'search', 'sort', 'condition', 'minPrice', 'maxPrice', 'free', 'includeSold', 'status'] as const;
@@ -113,52 +116,16 @@ export default async function Home({
           <HomeFilters />
         </Suspense>
 
-        <div className="mt-8 mb-5 flex items-end justify-between gap-4">
-          <h2 className="text-xl sm:text-2xl font-extrabold">{heading}</h2>
-          {feed && <span className="text-sm text-text-muted shrink-0">{total} {total === 1 ? 'item' : 'items'}</span>}
-        </div>
-
-        {!feed ? (
-          <div className="py-20 text-center rounded-3xl border border-dashed border-border-subtle">
-            <p className="text-lg font-semibold mb-1">Couldn&apos;t load listings</p>
-            <p className="text-sm text-text-muted mb-6">The server might be waking up. Give it a few seconds.</p>
-            <Link href={queryString ? `/?${queryString}` : '/'} className="btn-secondary">Try again</Link>
-          </div>
-        ) : listings.length > 0 ? (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
-              {listings.map((listing, i) => (
-                <ListingCard key={listing._id} listing={listing} priority={i < 4} />
-              ))}
-            </div>
-            <LoadMoreListings
-              key={queryString}
-              query={queryString}
-              lastListingId={listings[listings.length - 1]?._id}
-              initialHasMore={feed.pagination.hasMore}
-            />
-          </>
-        ) : (
-          <div className="py-20 px-6 text-center rounded-3xl border border-dashed border-border-subtle bg-bg-panel">
-            <div className="text-5xl mb-4" aria-hidden="true">{isFiltered ? '🔍' : '🌱'}</div>
-            <h3 className="text-lg font-bold mb-1">{isFiltered ? 'Nothing matches yet' : 'Be the first to sell'}</h3>
-            <p className="text-text-muted text-sm mb-6 max-w-sm mx-auto">
-              {isFiltered
-                ? 'Try a different search, or tell sellers what you need on the Wanted board.'
-                : 'The marketplace is empty right now. List something and get the ball rolling!'}
-            </p>
-            <div className="flex flex-wrap gap-3 justify-center">
-              {isFiltered ? (
-                <>
-                  <Link href="/" className="btn-secondary">Clear filters</Link>
-                  <Link href="/wanted" className="btn-primary">Post a request</Link>
-                </>
-              ) : (
-                <Link href="/sell" className="btn-primary">Sell an item</Link>
-              )}
-            </div>
-          </div>
-        )}
+        <Suspense fallback={<div className="h-48 skeleton rounded-3xl mt-8" />}>
+          <HomeFeed
+            initialListings={listings}
+            initialTotal={total}
+            initialHasMore={feed?.pagination.hasMore ?? false}
+            initialQuery={queryString}
+            heading={heading}
+            isFiltered={isFiltered}
+          />
+        </Suspense>
 
         {/* Recently Sold on Campus */}
         {!isFiltered && soldFeed && soldFeed.listings.length > 0 && (

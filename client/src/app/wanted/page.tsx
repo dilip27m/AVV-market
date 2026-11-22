@@ -34,7 +34,8 @@ export default function WantedBoard() {
   const { data, isLoading, mutate } = useSWR<{ posts: WantedPost[] }>(
     // Include the user id so the list refetches (with phone numbers) after login
     `/wanted${category ? `?category=${encodeURIComponent(category)}` : ''}#${user?._id || 'guest'}`,
-    (key: string) => fetcher(key.split('#')[0])
+    (key: string) => fetcher(key.split('#')[0]),
+    { refreshInterval: 15000, revalidateOnFocus: true }
   );
   const posts = data?.posts || [];
 

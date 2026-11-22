@@ -265,6 +265,7 @@ export function ListingForm({ listing }: ListingFormProps) {
       toast.success(isEdit ? 'Listing updated' : 'Your item is live! 🎉');
       if (!isEdit) refreshUser(); // phone/meet address may have been saved as defaults
       router.push(`/listing/${data.data._id}`);
+      router.refresh();
     } catch (err) {
       setError(getErrorMessage(err, isEdit ? 'Failed to update listing.' : 'Failed to create listing.'));
       setIsSubmitting(false);

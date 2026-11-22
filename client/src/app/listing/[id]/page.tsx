@@ -97,8 +97,16 @@ export default function ListingDetails() {
     }
   }, [id]);
 
-  const { data: listing, error, isLoading, mutate: mutateListing } = useSWR<ListingDetail>(`/listings/${id}`, fetcher);
-  const { data: comments = [], mutate: mutateComments } = useSWR<Comment[]>(`/comments/${id}`, fetcher);
+  const { data: listing, error, isLoading, mutate: mutateListing } = useSWR<ListingDetail>(
+    `/listings/${id}`,
+    fetcher,
+    { refreshInterval: 12000, revalidateOnFocus: true }
+  );
+  const { data: comments = [], mutate: mutateComments } = useSWR<Comment[]>(
+    `/comments/${id}`,
+    fetcher,
+    { refreshInterval: 8000, revalidateOnFocus: true }
+  );
 
   const sellerId = listing?.sellerId?._id;
   const isOwner = !!user && !!sellerId && user._id === sellerId;

@@ -7,8 +7,8 @@ import { uploadImages, deleteImages } from '../utils/images';
 import { isAdminUser } from '../middleware/auth.middleware';
 import { asString, isObjectId, normalizePhone } from '../utils/validate';
 
-// Cache for 60 seconds
-const cache = new NodeCache({ stdTTL: 60 });
+// Short cache (5 seconds) for burst deduplication without delaying live updates
+const cache = new NodeCache({ stdTTL: 5 });
 
 /** Clear the browse-feed cache (call after any listing mutation). */
 export const invalidateListingsCache = (): void => {
@@ -330,6 +330,7 @@ export const getListings = async (req: Request, res: Response): Promise<void> =>
     const cacheKey = [
       'listings', pageNum, limitNum, category || 'all', sort, search || '', cursor || '',
       condition || '', JSON.stringify(priceFilter),
+      includeSold ? '1' : '0', statusOnly || '',
     ].join('_');
     const cachedResponse = cache.get(cacheKey);
     if (cachedResponse) {

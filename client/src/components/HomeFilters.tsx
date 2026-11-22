@@ -66,13 +66,19 @@ export function HomeFilters() {
 
   const set = (patch: Partial<Filters>) => setFilters((prev) => ({ ...prev, ...patch }));
 
-  // Debounce filter changes into the URL; the server page re-fetches from it
+  // Keep state in sync with URL search params if user navigates back/forward or resets
+  useEffect(() => {
+    setFilters(readFilters(searchParams));
+  }, [searchParams]);
+
+  // Debounce filter changes into the URL and refresh the route
   useEffect(() => {
     const handler = setTimeout(() => {
       const next = toQuery(filters);
       if (next === searchParams.toString()) return;
       router.replace(next ? `/?${next}` : '/', { scroll: false });
-    }, 350);
+      router.refresh();
+    }, 300);
     return () => clearTimeout(handler);
   }, [filters, router, searchParams]);
 

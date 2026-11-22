@@ -34,7 +34,8 @@ export default function SoldPage() {
 
   const { data, isLoading } = useSWR<ListingsResponse>(
     `/listings?${queryParams.toString()}`,
-    fetcher
+    fetcher,
+    { refreshInterval: 15000, revalidateOnFocus: true }
   );
 
   const listings = data?.listings || [];
